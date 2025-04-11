@@ -7,22 +7,15 @@ import warnings
 import logging
 import whisper
 import torch
-import time
 import os
 from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
 from log_utils import setup_logger, configure_root_logger
 from speechbrain.pretrained import EncoderClassifier
-from typing import List, Dict, Optional, Any, Tuple
-from datetime import datetime, date, time
-from transformers import pipeline
+from typing import List, Dict
 from dataclasses import dataclass
-from tqdm import tqdm_notebook
 from tqdm.notebook import tqdm
-from typing import Optional
-from enum import Enum, auto
+from enum import Enum
 
-
-TRANSCRIBE_MODEL_NAME = 'medium'
 
 logger = setup_logger(__name__, level='DEBUG')
 configure_root_logger(level='INFO')
@@ -32,9 +25,6 @@ device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 warnings.filterwarnings("ignore", message="FP16 is not supported on CPU")
 warnings.filterwarnings("ignore", category=FutureWarning, message=".*torch.cuda.amp.custom_fwd.*")
 logging.getLogger("speechbrain").setLevel(logging.WARNING)
-
-from huggingface_hub import login
-login()
 
 @dataclass
 class DiarizedResult:
@@ -155,11 +145,12 @@ class TranscribingStatus(Enum):
 		return status.description
 
 class AudioTranscription:
-	def __init__(self, audio_path: str):
+	def __init__(self, audio_path: str, model_name='medium'):
 		logger.debug(f'Создан Audio Analisys для {audio_path}')
 		self.audio_path = os.path.join(os.path.expanduser("~"), audio_path)
 		self.progress = 0.0
 		self.status = TranscribingStatus.INITIALIZED
+		self.transcribe_model_name = model_name
 		self.results = {
 			"transcription": None,
 			"diarization": None,
@@ -225,7 +216,7 @@ class AudioTranscription:
 	def _transcribe(self) -> str:
 		self._update_status(TranscribingStatus.TRANSCRIBING)
 		logger.debug(f"{os.path.basename(self.audio_path)} - TRANSCRIBING..")
-		whisper_model = whisper.load_model(TRANSCRIBE_MODEL_NAME)
+		whisper_model = whisper.load_model(self.transcribe_model_name)
 		transcribe_result = whisper_model.transcribe(self.audio_path)
 		self._update_status(TranscribingStatus.TRANSCRIBED)
 		return transcribe_result
