@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env whisper
 # coding: utf-8
 
 from sklearn.cluster import KMeans
