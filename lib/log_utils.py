@@ -20,18 +20,6 @@ def setup_logger(
     propagate: bool = False,
     clear_existing: bool = True
 ) -> logging.Logger:
-    """
-    Configure a colorized logger with standardized formatting
-    
-    Args:
-        name: Logger name (usually __name__)
-        level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        propagate: Whether to propagate to parent loggers
-        clear_existing: Remove existing handlers before setup
-    
-    Returns:
-        Configured logger instance
-    """
     logger = colorlog.getLogger(name)
     
     if clear_existing:

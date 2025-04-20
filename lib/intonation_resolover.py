@@ -10,13 +10,13 @@ def predict_emotion(audio_segment):
         "xbgoose/hubert-speech-emotion-recognition-russian-dusha-finetuned"
     )
 
-    num2emotion = {
-        0: 'Нейтрально',
-        1: 'Злобно',
-        2: 'Позитивно',
-        3: 'Грустно',
-        4: 'Невнятно'
-    }
+    # num2emotion = {
+    #     0: 'Нейтрально',
+    #     1: 'Злобно',
+    #     2: 'Позитивно',
+    #     3: 'Грустно',
+    #     4: 'Невнятно'
+    # }
 
     buffer = io.BytesIO()
     audio_segment.export(buffer, format="wav")
@@ -38,6 +38,4 @@ def predict_emotion(audio_segment):
     with torch.no_grad():
         logits = model(inputs['input_values'][0]).logits
 
-    predicted_emotion = num2emotion[torch.argmax(logits).item()]
-
-    return predicted_emotion
+    return torch.argmax(logits).item()

@@ -16,14 +16,14 @@ from dataclasses import dataclass
 from tqdm.notebook import tqdm
 from enum import Enum
 
-logger = setup_logger(__name__, level='DEBUG')
+logger = setup_logger(__name__, level='INFO')
 configure_root_logger(level='INFO')
+
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 warnings.filterwarnings("ignore", message="FP16 is not supported on CPU")
 warnings.filterwarnings("ignore", category=FutureWarning, message=".*torch.cuda.amp.custom_fwd.*")
-logging.getLogger("speechbrain").setLevel(logging.WARNING)
 
 
 @dataclass
