@@ -1,7 +1,6 @@
 import sys
 import logging
 import colorlog
-from typing import Optional
 
 # Define log levels as constants
 LOG_LEVELS = {

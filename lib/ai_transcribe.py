@@ -4,7 +4,6 @@
 from sklearn.cluster import KMeans
 import numpy as np
 import warnings
-import logging
 import whisper
 import torch
 import os
