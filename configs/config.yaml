@@ -1,0 +1,9 @@
+transcribe:
+  model_name: medium
+
+audio:
+  sample_rate: 16000
+diarize:
+  model_name: speechbrain/spkrec-ecapa-voxceleb
+  min_segment_length: 0.75
+  target_segment_length: 1.5
