@@ -9,7 +9,7 @@ if __name__ == "__main__":
     os.environ["OMP_NUM_THREADS"] = "1"
     os.environ["MKL_NUM_THREADS"] = "1"
 
-    audio_file = "../data/input/temp/Разговор-7.mp3"
+    audio_file = "../data/input/temp/processed_f44a4dab-6f6e-4ce6-a549-a49f670decf9.wav"
     result = audio_to_text_processor(Path(audio_file))
     detect_manager(result)
     for r in result:

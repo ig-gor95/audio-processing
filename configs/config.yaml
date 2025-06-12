@@ -5,5 +5,5 @@ audio:
   sample_rate: 16000
 diarize:
   model_name: speechbrain/spkrec-ecapa-voxceleb
-  min_segment_length: 0.75
+  min_segment_length: 1.5
   target_segment_length: 1.5
