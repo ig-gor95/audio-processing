@@ -7,3 +7,8 @@ diarize:
   model_name: speechbrain/spkrec-ecapa-voxceleb
   min_segment_length: 1.5
   target_segment_length: 1.5
+
+saiga:
+  url: http://localhost:11434/v1
+  model-name: ilyagusev/saiga_llama3
+  api-key: ollama
