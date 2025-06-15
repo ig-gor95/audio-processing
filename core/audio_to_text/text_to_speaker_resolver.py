@@ -1,10 +1,10 @@
-from typing import List
+from typing import List, Type
 
-from core.entity.audio_to_text_result import AudioToTextResult
+from core.entity.audio_to_text_result import ProcessingResult, ProcessingResults
 from core.entity.diarisation_result import DiarizedResult
 
 
-def unite_results(transcribed_result, diarized_result: DiarizedResult):
+def unite_results(transcribed_result, diarized_result: DiarizedResult) -> ProcessingResults:
     diarization_result = []
     for i, segment in enumerate(diarized_result.valid_segments):
         speaker = f"Speaker_{diarized_result.labels[i] + 1}"
@@ -13,7 +13,7 @@ def unite_results(transcribed_result, diarized_result: DiarizedResult):
             "end": segment['end'],
             "speaker": speaker
         })
-    result: List[AudioToTextResult] = []
+    processing_results = ProcessingResults()
 
     for segment in transcribed_result["segments"]:
         start = segment["start"]
@@ -38,7 +38,7 @@ def unite_results(transcribed_result, diarized_result: DiarizedResult):
                     break
 
         speaker = best_speaker if best_speaker else "Unknown"
-        prev_element = result[-1] if result else None
+        prev_element = processing_results.items[-1] if processing_results.items else None
 
         is_copy_anomaly = prev_element is not None and prev_element.text == text and prev_element.speaker_id == speaker
 
@@ -47,7 +47,5 @@ def unite_results(transcribed_result, diarized_result: DiarizedResult):
             prev_element.text = f"{prev_element.text} {text}"
             prev_element.end_time = start
             continue
-
-        result.append(AudioToTextResult(speaker, start, end, text, is_copy_anomaly))
-
-    return result
+        processing_results.items.append(ProcessingResult(speaker, text, start, end, is_copy_anomaly))
+    return processing_results
