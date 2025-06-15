@@ -1,30 +1,22 @@
-from typing import Dict, List
+from typing import List
 
+from core.entity.audio_to_text_result import ProcessingResults, ObjectionProp
 from saiga import SaigaClient
 
-# Пример использования
-if __name__ == "__main__":
-    saiga = SaigaClient()
 
-    dialog = """
-         Client: Здравствуйте! Я бы хотел приобрести колеса у вас!
-         Manager: Добрый день! Меня зовут Евгений, какие колеса вас интересуют?
-         Client: Для мазды-шестерки
-         Manager: Стоимость будет - 50 тысяч рублей
-         Client: Это будет дорого для меня, такое меня не удовлетворит
-         Manager: Тогда мы можем предложить вам рассрочку
-         Client: Это звучит лучше
-         """
+def resolve_objections(results: ProcessingResults) -> ProcessingResults:
+    saiga = SaigaClient()
 
     res = saiga.ask_with_json_response(
         f"""
         Я передам тебе текст диалога, после слов ОСНОВНОЙ ТЕКСТ.
         Нужно понять было ли отработано возражение клиента, когда клиенту не понравились условия,
         а менеджер предоставил условие получше, то есть отработал возражение.
-        Вернуть результат нужно в формате json.
-        Тип json:
+        Виды воражений клинета: это дорого, это неудобно, это не нравится.
+        Вернуть результат нужно в формате списка json объектов.
+        Пример json:
         [{{
-        "objection_str": "",
+            "objection_str": "",
             "manager_offer_str": "",
             "was_resolved": true"
         }}] 
@@ -35,14 +27,23 @@ if __name__ == "__main__":
         Возражений и отработок возражений может быть несколько
         выводи только заполненную структуру
         ОСНОВНОЙ ТЕКСТ:
-        {dialog}
+        {results.to_string()}
         
-        В ответе выведи только json и больше ничего без форматирования и лишних символов, так как я буду парсить твой вывод
+        Обязательно В ответе выведи только json и больше ничего без форматирования и лишних символов, так как я буду парсить твой вывод
+        строго соблюдай наименования полей в json
         """
     )
     if not isinstance(res, List):
-        raise ValueError("Expected dictionary but got different format")
+        raise ValueError(f"Expected dictionary but got different format {res}")
 
-        # Work with dictionary data
+    objection_props = []
+
     for i in res:
-        print(i)
+        try:
+            objection_props.append(ObjectionProp(i["objection_str"], i["manager_offer_str"],  i["was_resolved"]))
+        except Exception:
+            raise ValueError(f"incorrect format {i}")
+
+    results.objection_prop = objection_props
+
+    return results

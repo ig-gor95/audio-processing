@@ -3,7 +3,7 @@ from openai import OpenAI
 from json_util import text_to_json
 from yaml_reader import ConfigLoader
 
-config = ConfigLoader("../../../configs/config.yaml")
+config = ConfigLoader("../configs/config.yaml")
 
 class SaigaClient:
 
