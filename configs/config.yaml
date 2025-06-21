@@ -1,5 +1,6 @@
 transcribe:
   model_name: medium
+  threads: 3
 
 audio:
   sample_rate: 16000
@@ -11,4 +12,5 @@ diarize:
 saiga:
   url: http://localhost:11434/v1
   model-name: ilyagusev/saiga_llama3
+#  model-name: ilyagusev/saiga_llama3
   api-key: ollama

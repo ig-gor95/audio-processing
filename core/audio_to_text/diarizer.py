@@ -129,19 +129,10 @@ def diarize(file_path: Path) -> DiarizedResult:
     embeddings_np = embeddings_np / np.linalg.norm(embeddings_np, axis=1, keepdims=True)
 
     # Cluster selection
-    if config.get('diarize.use_bgm', False):
-        # Bayesian Gaussian Mixture often works better than KMeans
-        bgm = BayesianGaussianMixture(
-            n_components=min(MAX_SPEAKERS, len(embeddings_np)),
-            covariance_type='diag',
-            random_state=42,
-            max_iter=200
-        )
-        labels = bgm.fit_predict(embeddings_np)
-    else:
-        n_clusters = estimate_optimal_clusters(embeddings_np)
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-        labels = kmeans.fit_predict(embeddings_np)
+
+    n_clusters = estimate_optimal_clusters(embeddings_np)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    labels = kmeans.fit_predict(embeddings_np)
 
     logger.info(
         f"Diarization complete. Segments: {len(valid_segments)}, "
