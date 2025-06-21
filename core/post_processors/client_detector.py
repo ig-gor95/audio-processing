@@ -37,3 +37,5 @@ def detect_manager(dialog: ProcessingResults):
     for line in dialog.items:
         if line.speaker_id == manager:
             line.speaker_id = "SALES"
+        else:
+            line.speaker_id = "CLIENT"

@@ -38,14 +38,14 @@ def unite_results(transcribed_result, diarized_result: DiarizedResult) -> Proces
                     break
 
         speaker = best_speaker if best_speaker else "Unknown"
-        prev_element = processing_results.items[-1] if processing_results.items else None
+        prev_element = processing_results.get_last_phrase()
 
         is_copy_anomaly = prev_element is not None and prev_element.text == text and prev_element.speaker_id == speaker
 
-        # Если следущая строка от того же спикера, то объединяем строку
+        # Если следующая строка от того же спикера, то объединяем строку
         if prev_element is not None and prev_element.speaker_id == speaker and prev_element.end_time == start:
             prev_element.text = f"{prev_element.text} {text}"
             prev_element.end_time = start
             continue
-        processing_results.items.append(ProcessingResult(speaker, text, start, end, is_copy_anomaly))
+        processing_results.add_phrase(speaker, text, start, end, is_copy_anomaly)
     return processing_results

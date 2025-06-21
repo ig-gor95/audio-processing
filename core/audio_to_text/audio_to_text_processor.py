@@ -8,8 +8,8 @@ from core.entity.audio_to_text_result import ProcessingResults
 
 def audio_to_text_processor(audio_path: Path) -> ProcessingResults:
     diarize_result = diarize(audio_path)
-
+    transcribed_result = transcribe(audio_path, diarize_result.valid_segments)
     return unite_results(
-        transcribe(audio_path),
+        transcribed_result,
         diarize_result
     )
