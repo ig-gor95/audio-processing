@@ -81,7 +81,7 @@ def diarize(file_path: Path) -> DiarizedResult:
             audio,
             vad_model,
             return_seconds=True,
-            threshold=config.get('diarize.vad_threshold', 0.5)
+            threshold=config.get('diarize.vad_threshold', 0.3)
         )
     except Exception as e:
         logger.error(f"Audio processing failed: {e}")
