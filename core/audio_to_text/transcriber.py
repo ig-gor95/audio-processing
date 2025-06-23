@@ -3,7 +3,8 @@ from typing import List, Dict
 import multiprocessing as mp
 import mlx_whisper
 import torchaudio
-import librosa
+from pydub import AudioSegment
+from pydub.silence import split_on_silence
 
 from log_utils import setup_logger
 from yaml_reader import ConfigLoader
@@ -98,53 +99,10 @@ def transcribe_chunk(args) -> Dict:
         return {"start": start, "end": end, "text": ""}
 
 
-def detect_pauses(
-        audio_path: str,
-        min_pause_duration: float = 1.0,  # Minimum silence to split (seconds)
-        aggressiveness: int = 2,  # VAD sensitivity (1-3)
-        sr: int = 16000
-) -> List[Dict[str, float]]:
-    """
-    Step 1: Lightweight pause detection using energy-based VAD.
-    Returns timestamps where pauses occur.
-    """
-    y, sr = librosa.load(audio_path, sr=sr)
-
-    # Simple energy-based VAD (faster than model-based)
-    frame_length = int(0.02 * sr)  # 20ms frames
-    energy = librosa.feature.rms(
-        y=y,
-        frame_length=frame_length,
-        hop_length=frame_length
-    ).squeeze()
-
-    # Dynamic threshold (adjust aggressiveness)
-    threshold = np.percentile(energy, 30 + 10 * (3 - aggressiveness))
-    is_speech = energy > threshold
-
-    # Find pause boundaries
-    pause_bounds = []
-    in_pause = False
-    pause_start = 0
-
-    for i, speech in enumerate(is_speech):
-        time = i * frame_length / sr
-
-        if not speech and not in_pause:
-            in_pause = True
-            pause_start = time
-
-        elif speech and in_pause:
-            if time - pause_start >= min_pause_duration:
-                pause_bounds.append(pause_start)
-            in_pause = False
-
-    return pause_bounds
-
 def transcribe(audio_path: Path, valid_segments: List[Dict[str, float]]) -> dict:
     logger.debug(f"{audio_path.name} - TRANSCRIBING...")
-    # speech_timestamps = extend_speech_segments(valid_segments)
-    speech_timestamps = valid_segments
+    speech_timestamps = extend_speech_segments(valid_segments)
+    # speech_timestamps = valid_segments
     args_list = [(audio_path, ts["start"], ts["end"]) for ts in speech_timestamps]
 
     with mp.Pool(processes=min(config.get("transcribe.threads"), mp.cpu_count())) as pool:
