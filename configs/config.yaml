@@ -1,12 +1,12 @@
 transcribe:
   model_name: medium
-  threads: 3
+  threads: 2
 
 audio:
   sample_rate: 16000
 diarize:
   model_name: speechbrain/spkrec-ecapa-voxceleb
-  min_segment_length: 1.5
+  min_segment_length: 1
   target_segment_length: 1.5
 
 saiga:
