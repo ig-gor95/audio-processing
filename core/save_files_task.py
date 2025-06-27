@@ -14,6 +14,7 @@ import os
 from core.post_processors.client_detector import detect_manager
 from core.repository.audio_dialog_repository import AudioDialogRepository
 from log_utils import setup_logger
+from yaml_reader import ConfigLoader
 
 logger = setup_logger(__name__)
 
@@ -107,4 +108,6 @@ def process_files_parallel(audio_files: List[Path], max_workers: int = 4, max_fi
     logger.info(f"Execution time: {end_time - start_time:.2f} seconds")
 
 if __name__ == "__main__":
-    process_files_parallel(audio_files, max_files=2000)
+    conf = ConfigLoader("post_processors/config/stopwords_patterns.yaml").get_dict_list('patterns')
+    print(conf)
+    # process_files_parallel(audio_files, max_files=2000)
