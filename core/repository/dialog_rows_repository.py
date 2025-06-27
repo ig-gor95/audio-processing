@@ -64,3 +64,7 @@ class DialogRowRepository:
             return session.query(DialogRow)\
                 .filter(DialogRow.audio_dialog_fk_id == dialog_id)\
                 .all()
+
+    def find_all(self) -> List[DialogRow]:
+        with self._get_session() as session:
+            return session.query(DialogRow).order_by(DialogRow.row_num).all()

@@ -1,9 +1,6 @@
 import re
 import uuid
 
-from sqlalchemy import create_engine
-
-from core.repository import dialog_rows_repository
 import pandas as pd
 from natasha import MorphVocab, NamesExtractor, Doc, Segmenter, NewsEmbedding, NewsMorphTagger, NewsNERTagger
 
@@ -11,35 +8,12 @@ from fuzzywuzzy import fuzz
 from collections import defaultdict
 import pymorphy2
 
+from core.post_processors.criteria_utils import normalize_text, find_phrase
 from yaml_reader import ConfigLoader
 
 
-def normalize_text(text):
-    """Нормализация текста для обработки с учетом возможных ошибок"""
-    text = text.lower()
-    # Заменяем частые ошибки транскрипции и сокращения
-    replacements = {
-        'здрасте': 'здравствуйте',
-        'здрасьте': 'здравствуйте',
-        'здрась': 'здравствуйте',
-        'драсьте': 'здравствуйте',
-        'доброго дня': 'добрый день',
-        'добраго вечера': 'добрый вечер',
-        'всего хорошего': 'всего доброго',
-        'в общем-то': 'в общем',
-        'короче говоря': 'короче',
-        'типа того': 'типа',
-        'как-бы': 'как бы',
-        'т.е.': 'то есть',
-        'т.д.': 'так далее',
-        'т.п.': 'тому подобное'
-    }
-    for wrong, correct in replacements.items():
-        text = text.replace(wrong, correct)
-    return text
-
-
 def create_stopword_patterns(morph):
+    config = ConfigLoader("config/stopwords_patterns.yaml").get('pattern')
     """Создает паттерны для поиска стоп-слов с учетом склонений"""
     stopwords = {
         'не знаю': ['не знаю', 'незнаю', 'не знаем', 'я не знаю', 'знать не знаю', 'не зная', 'неизвестно'],
@@ -240,16 +214,6 @@ def check_speech_quality(text, speech_patterns, morph):
 
     return formatted_issues if formatted_issues else None
 
-
-def find_phrase(text, phrases, threshold=80):
-    """Поиск фразы с учетом возможных ошибок (fuzzy matching)"""
-    text = normalize_text(text)
-    for phrase in phrases:
-        if fuzz.partial_ratio(phrase, text) >= threshold:
-            return phrase
-    return None
-
-
 def extract_valid_names(text, extractor, morph_vocab):
     """Извлекаем имена с учетом контекста представления"""
     segmenter = Segmenter()
@@ -369,8 +333,6 @@ def analyze_dialogue_enhanced(dialogue_text, row_id, mat_words_file=None):
     safe_diminutives = {'мама', 'папа', 'бабушка', 'дедушка', 'дочка', 'сынок', 'котик'}
 
     # Обработка текста
-    lines = [line.strip() for line in dialogue_text.split('\n') if line.strip()]
-    results = []
     text = dialogue_text
     # Основные проверки
     greeting_phrase = find_phrase(text, greeting_phrases)
@@ -441,44 +403,6 @@ def analyze_dialogue_enhanced(dialogue_text, row_id, mat_words_file=None):
         "swear_words": mat_words_found or ''
     }
 
-    # dialog_criteria_repository.save(
-    #     criteria_id=uuid.uuid4(),
-    #     dialog_row_fk_id=row_id,
-    #     has_greeting=greeting == 1,
-    #     greeting_phrase=greeting_phrase,
-    #     has_name=name == 1,
-    #     found_name=found_name,
-    #     has_farewell=farewell == 1,
-    #     farewell_phrase=farewell_phrase,
-    #     has_stopwords=has_stopwords == 1,
-    #     has_swear_words=has_mat == 1,
-    #     has_diminutives=has_diminutives == 1,
-    #     interjections=speech_issues.get('interjections', '') if speech_issues else '',
-    #     parasite_words=speech_issues.get('parasites', '') if speech_issues else '',
-    #     abbreviations=speech_issues.get('abbreviations', '') if speech_issues else '',
-    #     slang=speech_issues.get('slang', '') if speech_issues else '',
-    #     inappropriate_phrases=speech_issues.get('inappropriate_phrases', '') if speech_issues else '',
-    #     diminutives=speech_issues.get('diminutives', '') if speech_issues else '',
-    #     stop_words=stopwords_found or '',
-    #     swear_words=mat_words_found or '',
-    # )
-
-
-# Определяем общее качество речи
-def get_speech_quality(row):
-    if row['has_mat']:
-        return 'недопустимо'
-    problems = row['total_problems']
-    if problems == 0:
-        return 'отлично'
-    elif problems <= 2:
-        return 'хорошо'
-    elif problems <= 5:
-        return 'удовлетворительно'
-    else:
-        return 'плохо'
-
-
 def process_row_wrapper(args):
     row_text, row_id = args
     return analyze_dialogue_enhanced(row_text, row_id)
@@ -507,37 +431,3 @@ def process_rows_parallel(rows, processes=4):
             count += 1
 
     return data
-
-
-if __name__ == "__main__":
-    rows = dialog_rows_repository.do_select_all()
-    count = 0
-    print(len(rows))
-    config = ConfigLoader("../../configs/config.yaml")
-    engine = create_engine(
-        f"postgresql+psycopg2://{config.get("db.user")}:{config.get("db.password")}@"
-        f"{config.get("db.host")}:{config.get("db.port")}/{config.get("db.dbname")}"
-    )
-    b = []
-    for row in rows:
-        if str(row['id']) in ["f3d57114-fe03-4d2e-bd2d-9d717d38cc7e",
-                         "fbee3d48-e0d5-4738-8a32-eee0fb78cdf5",
-                         "7e2897dc-f34a-449d-a7ba-e881aa81f23b",
-                         "ecf81e84-7807-487a-88de-f6d0d5d17010",
-                         "459c966a-bb9b-45a4-b455-07835dd9f3b5",
-                         "74a0f8e1-a871-40be-b593-bedb12a62073",
-                         "a8189f81-09e0-4802-86ae-8a446097a6e0",
-                         "9af0fe34-ab51-4ebd-9273-3dc63f61afae",
-                         "9230f244-ac70-4d5a-974b-62ef95c2b39a"]:
-            b.append(row)
-    print('asd')
-    data = process_rows_parallel(b)
-    df = pd.DataFrame(data)
-    df.to_sql(
-        name='dialog_criterias',  # Table name
-        con=engine,
-        if_exists='append',  # Append to existing table
-        index=False,  # Don't write row index
-        method='multi',  # Multi-row insert
-        chunksize=100  # Batch size
-    )
