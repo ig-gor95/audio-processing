@@ -1,6 +1,6 @@
 transcribe:
   model_name: medium
-  threads: 2
+  threads: 1
 
 audio:
   sample_rate: 16000

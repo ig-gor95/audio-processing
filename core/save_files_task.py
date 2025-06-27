@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import List
 import soundfile as sf
 
-import audio_dialog_repository as audio_dialog_repository
-import dialog_rows_repository as dialog_rows_repository
+from core.repository import audio_dialog_repository as audio_dialog_repository, \
+    dialog_rows_repository as dialog_rows_repository
 from core.audio_to_text.audio_to_text_processor import audio_to_text_processor
 import os
 
 from core.post_processors.client_detector import detect_manager
+from core.repository.audio_dialog_repository import AudioDialogRepository
 from log_utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -23,7 +24,7 @@ audio_files = [f for f in Path(folder_path).iterdir() if f.is_file()]
 
 print_lock = threading.Lock()
 duration_lock = threading.Lock()
-
+audioDialogRepository = AudioDialogRepository()
 
 def get_duration(audio_file: Path) -> float:
     with print_lock:
@@ -57,6 +58,7 @@ def run_pipeline(audio_file: Path):
         return
     else:
         dialog_rows_repository.delete_all_by_dialog_id(existing_dialog["id"])
+        file_uuid = existing_dialog["id"]
 
     result = audio_to_text_processor(audio_file)
     detect_manager(result)
@@ -80,7 +82,7 @@ def run_pipeline(audio_file: Path):
 
     audio_dialog_repository.update_status(file_uuid, "PROCESSED", execution_time)
 
-def process_files_parallel(audio_files: List[Path], max_workers: int = 4, max_files: int = 100):
+def process_files_parallel(audio_files: List[Path], max_workers: int = 4, max_files: int = 200):
     """Process files in parallel with progress tracking"""
     start_time = time.time()
     processed_count = 0
@@ -105,5 +107,4 @@ def process_files_parallel(audio_files: List[Path], max_workers: int = 4, max_fi
     logger.info(f"Execution time: {end_time - start_time:.2f} seconds")
 
 if __name__ == "__main__":
-    first_100_files = audio_files[:200]
-    process_files_parallel(first_100_files)
+    process_files_parallel(audio_files, max_files=2000)

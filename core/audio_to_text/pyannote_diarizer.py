@@ -2,7 +2,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from pyannote.audio import Pipeline
-from core.entity.diarisation_result import DiarizedResult
+from core.dto.diarisation_result import DiarizedResult
 from log_utils import setup_logger
 from yaml_reader import ConfigLoader
 

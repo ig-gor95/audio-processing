@@ -1,6 +1,6 @@
 from typing import List
 
-from core.entity.audio_to_text_result import ProcessingResults, ObjectionProp
+from core.dto.audio_to_text_result import ProcessingResults, ObjectionProp
 from saiga import SaigaClient
 
 

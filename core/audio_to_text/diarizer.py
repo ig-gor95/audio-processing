@@ -6,7 +6,7 @@ from sklearn.cluster import KMeans
 from sklearn.mixture import BayesianGaussianMixture
 from speechbrain.inference import EncoderClassifier
 from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
-from core.entity.diarisation_result import DiarizedResult
+from core.dto.diarisation_result import DiarizedResult
 from log_utils import setup_logger
 from yaml_reader import ConfigLoader
 
