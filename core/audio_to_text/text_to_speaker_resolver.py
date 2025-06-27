@@ -1,7 +1,7 @@
 from typing import List, Type
 
-from core.entity.audio_to_text_result import ProcessingResult, ProcessingResults
-from core.entity.diarisation_result import DiarizedResult
+from core.dto.audio_to_text_result import ProcessingResult, ProcessingResults
+from core.dto.diarisation_result import DiarizedResult
 
 
 def unite_results(transcribed_result, diarized_result: DiarizedResult) -> ProcessingResults:

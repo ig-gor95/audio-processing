@@ -4,8 +4,9 @@ import numpy as np
 import librosa
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
-from utils.log_utils import setup_logger
 import noisereduce as nr
+
+from log_utils import setup_logger
 
 logger = setup_logger(__name__)
 

@@ -1,6 +1,6 @@
 from fuzzywuzzy import fuzz
 
-from core.entity.audio_to_text_result import ProcessingResults
+from core.dto.audio_to_text_result import ProcessingResults
 
 MANAGER_KEYWORDS = {
     "как я могу к вам вращаться",
