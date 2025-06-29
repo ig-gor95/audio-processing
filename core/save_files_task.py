@@ -53,6 +53,7 @@ def run_pipeline(audio_file: Path):
     if existing_dialog is None:
         audio_dialog_repository.save(
             AudioDialog(
+                id=file_uuid,
                 file_name=audio_file.name,
                 duration=get_duration(audio_file),
                 status=AudioDialogStatus.LOADED
@@ -70,18 +71,19 @@ def run_pipeline(audio_file: Path):
 
     end_time = time.time()
     execution_time = end_time - start_time
-
-    for r in result.items:
-        dialog_row_repository.save(
-            DialogRow(
-                audio_dialog_fk_id=file_uuid,
-                row_num=r.phrase_id,
-                row_text=r.text,
-                speaker_id=r.speaker_id,
-                start=r.start_time,
-                end=r.end_time,
-            )
+    dialog_rows = [
+        DialogRow(
+            audio_dialog_fk_id=file_uuid,
+            row_num=r.phrase_id,
+            row_text=r.text,
+            speaker_id=r.speaker_id,
+            start=r.start_time,
+            end=r.end_time
         )
+        for r in result.items
+    ]
+
+    dialog_row_repository.save_bulk(dialog_rows)
 
     audio_dialog_repository.update_status(file_uuid, AudioDialogStatus.PROCESSED, execution_time)
 
