@@ -1,0 +1,30 @@
+from yaml_reader import ConfigLoader
+from typing import Optional
+import re
+
+
+class SwearDetector:
+    def __init__(self, config_path: str = "post_processors/config/swear_patterns.yaml"):
+        self._config = ConfigLoader(config_path)
+        self._patterns = self._compile_patterns()
+
+    def _compile_patterns(self) -> list[re.Pattern]:
+        base_words = self._config.get('patterns.swear-words', [])
+        char_map = self._config.get('patterns.char_replacements', {})
+
+        compiled_patterns = []
+        for word in base_words:
+            pattern = ''.join(char_map.get(c, c) for c in word.lower())
+            compiled_patterns.append(
+                re.compile(fr'\b{pattern}[а-яa-z]*\b', re.IGNORECASE)
+            )
+        return compiled_patterns
+
+    def __call__(self, text: str) -> Optional[str]:
+        found_words = set()
+        text_lower = text.lower()
+
+        for pattern in self._patterns:
+            found_words.update(pattern.findall(text_lower))
+
+        return ', '.join(sorted(found_words)) if found_words else None
