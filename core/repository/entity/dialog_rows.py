@@ -17,8 +17,6 @@ class DialogRow(Base):
     speaker_id = Column(String(50), nullable=False)
     start = Column(String(20), nullable=False)
     end = Column(String(20), nullable=False)
-    has_swear_word = Column(Boolean, default=False)
-    has_greeting = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
