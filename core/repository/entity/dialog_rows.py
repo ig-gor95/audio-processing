@@ -11,14 +11,12 @@ class DialogRow(Base):
     __tablename__ = 'dialog_rows'
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    audio_dialog_fk_id = Column(PG_UUID(as_uuid=True), ForeignKey('audio_dialogs.id'), nullable=False)
+    audio_dialog_fk_id = Column(PG_UUID(as_uuid=True), nullable=False)
     row_num = Column(String(20), nullable=False)
     row_text = Column(String, nullable=False)
     speaker_id = Column(String(50), nullable=False)
     start = Column(String(20), nullable=False)
     end = Column(String(20), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def __repr__(self):
         return f"<DialogRow(id={self.id}, row_num={self.row_num}, speaker={self.speaker_id})>"

@@ -11,14 +11,14 @@ from yaml_reader import ConfigLoader
 class SpeechPatternsDetector:
     def __init__(self, config_path: str = "post_processors/config/parasites_patterns.yaml"):
         self._config = ConfigLoader(config_path)
+        self._morph = pymorphy2.MorphAnalyzer()
         self._patterns = self._compile_patterns()
         self._threshold = self._compile_patterns()
-        self._morph = pymorphy2.MorphAnalyzer()
 
     def _compile_patterns(self) -> list[re.Pattern]:
-        parasite_patterns = self._config.get('patterns')
+        parasite_patterns = self._config.get('speech_patterns')
         parasite_patterns['interjections'] = re.compile(parasite_patterns['interjections'])
-        parasite_patterns['abbreviations'] = re.compile(parasite_patterns['abbreviations'])
+        parasite_patterns['abbreviations'] = re.compile(parasite_patterns['abbreviations_pattern'])
 
         diminutives = set()
         sample_words = ['день', 'вопрос', 'документ', 'минута', 'секунда', 'деньги', 'зайка', 'солнышко']

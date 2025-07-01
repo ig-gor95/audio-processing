@@ -9,8 +9,6 @@ import soundfile as sf
 from core.audio_to_text.audio_to_text_processor import audio_to_text_processor
 
 from core.post_processors.client_detector import detect_manager
-from core.post_processors.stop_words_detector import StopWordsDetector
-from core.post_processors.swear_detector import SwearDetector
 from core.repository.audio_dialog_repository import AudioDialogRepository
 from core.repository.dialog_rows_repository import DialogRowRepository
 from core.repository.entity.audio_dialog import AudioDialogStatus, AudioDialog
@@ -58,7 +56,7 @@ def run_pipeline(audio_file: Path):
                 id=file_uuid,
                 file_name=audio_file.name,
                 duration=get_duration(audio_file),
-                status=AudioDialogStatus.LOADED
+                status=AudioDialogStatus.NOT_PROCESSED
             )
         )
     elif existing_dialog.status == AudioDialogStatus.PROCESSED:
@@ -116,9 +114,9 @@ def process_files_parallel(audio_files: List[Path], max_workers: int = 4, max_fi
 
 
 if __name__ == "__main__":
-    # folder_path = f"{Path.home()}/Documents/Аудио Бринекс/Brinex_in_2025_04/"
-    # audio_files = list(Path(folder_path).glob("*"))
-
-    # process_files_parallel(audio_files, max_files=3000)
-    stopWordsDetector = StopWordsDetector()
-    print(stopWordsDetector("Я не могу владею этой инфой"))
+    folder_path = f"{Path.home()}/Documents/Аудио Бринекс/Brinex_in_2025_04/"
+    audio_files = list(Path(folder_path).glob("*"))
+    #
+    process_files_parallel(audio_files, max_files=5000)
+    # stopWordsDetector = StopWordsDetector()
+    # print(stopWordsDetector("Я не могу владею этой инфой"))

@@ -44,11 +44,13 @@ class DialogRowRepository:
             session.add(row)
             return row
 
-    def save_bulk(self, rows_data: List[Dict]) -> None:
-        """Save multiple dialog rows efficiently"""
+    def save_bulk(self, dialog_rows: List[DialogRow]) -> None:
+        """Save multiple DialogRow entities efficiently"""
         with self._get_session() as session:
-            rows = [DialogRow(**data) for data in rows_data]
-            session.bulk_save_objects(rows)
+            if not all(isinstance(row, DialogRow) for row in dialog_rows):
+                raise TypeError("All items must be DialogRow instances")
+
+            session.bulk_save_objects(dialog_rows)
 
     def delete_all_by_dialog_id(self, dialog_id: UUID) -> int:
         """Delete all rows for a specific audio dialog"""

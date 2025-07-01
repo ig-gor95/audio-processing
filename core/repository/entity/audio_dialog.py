@@ -8,7 +8,7 @@ from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
 
 class AudioDialogStatus(Enum):
-    LOADED = 'LOADED'
+    NOT_PROCESSED = 'NOT_PROCESSED'
     PROCESSED = 'PROCESSED'
     ERROR = 'ERROR'
 
@@ -20,7 +20,7 @@ class AudioDialog(Base):
     file_name = Column(String(255), nullable=False)
     duration = Column(String(20), nullable=False)
     processing_time = Column(Float)
-    status = Column(SQLEnum(AudioDialogStatus), default=AudioDialogStatus.LOADED)
+    status = Column(SQLEnum(AudioDialogStatus), default=AudioDialogStatus.NOT_PROCESSED)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -18,6 +18,15 @@ class DialogCriteriaRepository:
             expire_on_commit=False
         )
 
+    def save_bulk(self, dialog_rows: List[DialogCriteria]) -> None:
+        """Save multiple DialogCriteria entities efficiently"""
+        with self._get_session() as session:
+            if not all(isinstance(row, DialogCriteria) for row in dialog_rows):
+                raise TypeError("All items must be DialogRow instances")
+
+            session.bulk_save_objects(dialog_rows)
+
+
     @contextmanager
     def _get_session(self):
         """Provide a transactional scope around a series of operations."""
@@ -40,12 +49,13 @@ class DialogCriteriaRepository:
             session.flush()
             return criteria
 
-    def find_by_dialog_row(self, dialog_row_id: UUID) -> List[DialogCriteria]:
-        """Find all criteria for a specific dialog row."""
+    def delete_by_dialog_row_fk_id(self, dialog_row_id: UUID) -> int:
         with self._get_session() as session:
-            return session.query(DialogCriteria) \
+            result = session.query(DialogCriteria) \
                 .filter(DialogCriteria.dialog_row_fk_id == dialog_row_id) \
-                .all()
+                .delete()
+            session.commit()
+            return result
 
     def find_by_criteria_id(self, criteria_id: str) -> Optional[DialogCriteria]:
         """Find criteria by its criteria_id."""
