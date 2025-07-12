@@ -1,7 +1,7 @@
 from typing import Optional, Dict, List
 from contextlib import contextmanager
 from uuid import UUID
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker, object_session
 from sqlalchemy.exc import SQLAlchemyError
 import logging
 
@@ -19,10 +19,9 @@ class DialogCriteriaRepository:
         )
 
     def save_bulk(self, dialog_rows: List[DialogCriteria]) -> None:
-        """Save multiple DialogCriteria entities efficiently"""
         with self._get_session() as session:
             if not all(isinstance(row, DialogCriteria) for row in dialog_rows):
-                raise TypeError("All items must be DialogRow instances")
+                raise TypeError("All items must be DialogCriteria instances")
 
             session.bulk_save_objects(dialog_rows)
 
@@ -41,12 +40,17 @@ class DialogCriteriaRepository:
         finally:
             session.close()
 
-    def save(self, criteria_data: Dict) -> DialogCriteria:
-        """Save dialog criteria to database using ORM."""
+    def save(self, criteria: DialogCriteria) -> DialogCriteria:
         with self._get_session() as session:
-            criteria = DialogCriteria(**criteria_data)
-            session.add(criteria)
+            if not isinstance(criteria, DialogCriteria):
+                raise TypeError("Input must be a DialogCriteria instance")
+
+            if object_session(criteria) is None:
+                session.add(criteria)
+            else:
+                criteria = session.merge(criteria)
             session.flush()
+            session.refresh(criteria)
             return criteria
 
     def delete_by_dialog_row_fk_id(self, dialog_row_id: UUID) -> int:
@@ -57,12 +61,27 @@ class DialogCriteriaRepository:
             session.commit()
             return result
 
+    def delete_by_id(self, id: UUID) -> int:
+        with self._get_session() as session:
+            result = session.query(DialogCriteria) \
+                .filter(DialogCriteria.dialog_criteria_id == id) \
+                .delete()
+            session.commit()
+            return result
+
     def find_by_criteria_id(self, criteria_id: str) -> Optional[DialogCriteria]:
         """Find criteria by its criteria_id."""
         with self._get_session() as session:
             return session.query(DialogCriteria) \
                 .filter(DialogCriteria.dialog_criteria_id == criteria_id) \
                 .first()
+
+    def find_by_row_fk_id(self, row_id: UUID) -> list[DialogCriteria]:
+        """Find criteria by its criteria_id."""
+        with self._get_session() as session:
+            return session.query(DialogCriteria) \
+                .filter(DialogCriteria.dialog_row_fk_id == row_id) \
+                .all()
 
     def update_criteria(self, criteria_id: str, update_data: Dict) -> Optional[DialogCriteria]:
         """Update existing criteria."""

@@ -1,3 +1,5 @@
+import json
+
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine, URL
 from typing import Optional
@@ -43,8 +45,10 @@ class DatabaseManager:
                 echo=False,
                 connect_args={
                     'connect_timeout': 10,
-                    'application_name': 'your_app_name'
-                }
+                    'application_name': 'your_app_name',
+                    'client_encoding': 'utf8'
+                },
+                json_serializer=lambda x: json.dumps(x, ensure_ascii=False)
             )
             logger.info("Database engine initialized successfully")
 

@@ -4,7 +4,7 @@ from typing import Optional
 
 import pymorphy2
 
-from core.post_processors.criteria_utils import normalize_text
+from core.post_processors.text_processing.criteria_utils import normalize_text
 from yaml_reader import ConfigLoader
 
 
@@ -21,13 +21,6 @@ class SpeechPatternsDetector:
         parasite_patterns['abbreviations'] = re.compile(parasite_patterns['abbreviations_pattern'])
 
         diminutives = set()
-        sample_words = ['день', 'вопрос', 'документ', 'минута', 'секунда', 'деньги', 'зайка', 'солнышко']
-        for word in sample_words:
-            parsed = self._morph.parse(word)[0]
-            for form in parsed.lexeme:
-                if 'Dmns' in form.tag:
-                    diminutives.add(form.word)
-
         parasite_patterns['diminutives'] = list(diminutives)
 
         return parasite_patterns
