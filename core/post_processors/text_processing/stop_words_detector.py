@@ -3,7 +3,6 @@ import pymorphy3
 from collections import defaultdict
 from typing import Optional
 from fuzzywuzzy import fuzz
-from core.post_processors.criteria_utils import normalize_text
 from yaml_reader import ConfigLoader
 
 class StopWordsDetector:
@@ -11,7 +10,7 @@ class StopWordsDetector:
         self._config = ConfigLoader(config_path)
         self._morph = pymorphy3.MorphAnalyzer()
         self._patterns = self._compile_patterns()
-        self._threshold = 85
+        self._threshold = 95
 
     def _compile_patterns(self) -> list[re.Pattern]:
         stopwords = self._config.get('patterns')
@@ -30,7 +29,7 @@ class StopWordsDetector:
         return patterns
 
     def __call__(self, text: str) -> Optional[str]:
-        text = normalize_text(text)
+        text = text.lower()
         found_stopwords = set()
 
         for base_phrase, variants in self._patterns.items():

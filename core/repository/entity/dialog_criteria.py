@@ -33,4 +33,4 @@ class DialogCriteria(Base):
     swear_words = Column(JSON)
 
     def __repr__(self):
-        return f"<DialogCriteria(id={self.id}, dialog_row_fk_id={self.dialog_row_fk_id})>"
+        return f"<DialogCriteria(id={self.dialog_criteria_id}, dialog_row_fk_id={self.dialog_row_fk_id})>"

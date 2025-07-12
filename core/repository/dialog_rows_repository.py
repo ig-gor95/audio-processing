@@ -10,6 +10,7 @@ from core.repository.entity.dialog_rows import DialogRow
 
 logger = logging.getLogger(__name__)
 
+
 class DialogRowRepository:
     def __init__(self, engine=None):
         self.engine = engine or DatabaseManager.get_engine()
@@ -37,12 +38,15 @@ class DialogRowRepository:
         with self._get_session() as session:
             return session.query(DialogRow).all()
 
-    def save(self, row_data: Dict) -> DialogRow:
-        """Save a dialog row"""
+    def save(self, row: DialogRow) -> DialogRow:
         with self._get_session() as session:
-            row = DialogRow(**row_data)
+            if not isinstance(row, DialogRow):
+                raise TypeError("Input must be a DialogRow instance")
+
             session.add(row)
+            session.refresh(row)
             return row
+
 
     def save_bulk(self, dialog_rows: List[DialogRow]) -> None:
         """Save multiple DialogRow entities efficiently"""
@@ -52,20 +56,31 @@ class DialogRowRepository:
 
             session.bulk_save_objects(dialog_rows)
 
+
     def delete_all_by_dialog_id(self, dialog_id: UUID) -> int:
         """Delete all rows for a specific audio dialog"""
         with self._get_session() as session:
-            result = session.query(DialogRow)\
-                .filter(DialogRow.audio_dialog_fk_id == dialog_id)\
+            result = session.query(DialogRow) \
+                .filter(DialogRow.audio_dialog_fk_id == dialog_id) \
                 .delete()
             return result  # Returns number of rows deleted
+
 
     def find_by_dialog_id(self, dialog_id: UUID) -> List[DialogRow]:
         """Find all rows for a specific audio dialog"""
         with self._get_session() as session:
-            return session.query(DialogRow)\
-                .filter(DialogRow.audio_dialog_fk_id == dialog_id)\
+            return session.query(DialogRow) \
+                .filter(DialogRow.audio_dialog_fk_id == dialog_id) \
                 .all()
+
+
+    def find_by_id(self, id: UUID) -> List[DialogRow]:
+        """Find all rows for a specific audio dialog"""
+        with self._get_session() as session:
+            return session.query(DialogRow) \
+                .filter(DialogRow.id == id) \
+                .all()
+
 
     def find_all(self) -> List[DialogRow]:
         with self._get_session() as session:
