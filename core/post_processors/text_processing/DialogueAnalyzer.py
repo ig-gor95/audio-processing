@@ -6,6 +6,7 @@ import pymorphy2
 from natasha import MorphVocab, NamesExtractor, NewsEmbedding, NewsMorphTagger, Segmenter, NewsNERTagger, Doc
 
 from core.post_processors.text_processing.criteria_utils import find_phrase
+from core.post_processors.text_processing.non_professional_patterns_detector import NonProfessionalPatternsDetector
 from core.post_processors.text_processing.speech_patterns_detector import SpeechPatternsDetector
 from core.post_processors.text_processing.stop_words_detector import StopWordsDetector
 from core.post_processors.text_processing.swear_detector import SwearDetector
@@ -20,6 +21,7 @@ class DialogueAnalyzer:
         self.swear_detector = SwearDetector()
         self.stop_words_detector = StopWordsDetector()
         self.speech_patterns_detector = SpeechPatternsDetector()
+        self.non_professional_patterns_detector = NonProfessionalPatternsDetector()
 
         # Initialize NLP tools
         self.morph_vocab = MorphVocab()
@@ -79,6 +81,7 @@ class DialogueAnalyzer:
         found_name = self.extract_valid_names(text)
 
         speech_issues = self.speech_patterns_detector(text)
+        non_professional_patterns = self.non_professional_patterns_detector(text)
         stopwords_found = self.stop_words_detector(text)
         swear_words_found = self.swear_detector(text)
 
@@ -100,6 +103,7 @@ class DialogueAnalyzer:
             abbreviations=speech_issues.get('abbreviations', '') if speech_issues else '',
             slang=speech_issues.get('slang', '') if speech_issues else '',
             inappropriate_phrases=speech_issues.get('inappropriate_phrases', '') if speech_issues else '',
+            non_professional_phrases=non_professional_patterns,
             diminutives=speech_issues.get('diminutives', '') if speech_issues else '',
             stop_words=stopwords_found or '',
             swear_words=swear_words_found or '',
