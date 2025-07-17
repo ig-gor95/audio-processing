@@ -74,14 +74,26 @@ class DialogRowRepository:
                 .all()
 
 
-    def find_by_id(self, id: UUID) -> List[DialogRow]:
+    def find_by_id(self, id: UUID) -> DialogRow:
         """Find all rows for a specific audio dialog"""
         with self._get_session() as session:
             return session.query(DialogRow) \
                 .filter(DialogRow.id == id) \
-                .all()
+                .first()
 
 
     def find_all(self) -> List[DialogRow]:
         with self._get_session() as session:
             return session.query(DialogRow).order_by(DialogRow.row_num).all()
+
+    def update_speaker_id_by_id(self, dialog_id: int, new_speaker_id: str):
+        with self._get_session() as session:
+            dialog_row = session.query(DialogRow).filter(DialogRow.id == dialog_id).first()
+
+            if dialog_row:
+                if dialog_row.speaker_id == new_speaker_id:
+                    return
+                else:
+                    print("updating")
+                dialog_row.speaker_id = new_speaker_id
+                session.commit()

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from contextlib import contextmanager
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
@@ -54,6 +54,10 @@ class AudioDialogRepository:
             if dialog:
                 dialog.status = new_status
                 dialog.processing_time = processed_time
+
+    def find_all(self) -> List[AudioDialog]:
+        with self._get_session() as session:
+            return session.query(AudioDialog).all()
 
     def exists(self, file_name: str) -> bool:
         """Check if a file exists using ORM."""
