@@ -1,41 +1,37 @@
+from typing import List
+
 from fuzzywuzzy import fuzz
 
-from core.dto.audio_to_text_result import ProcessingResults
-
-MANAGER_KEYWORDS = {
-    "как я могу к вам вращаться",
-    " переведу вас на другого оператора",
-    "как я могу к вам обращаться",
-    "ожидайте",
-    "policy",
-    "Благодарю за обращение", "Благодарю за длительное ожидание",
-    "номер телефона, по которому оформляли заказ"
-}
-
-THRESHOLD = 80
+from core.repository.entity.dialog_rows import DialogRow
+from yaml_reader import ConfigLoader
 
 
-def detect_manager(dialog: ProcessingResults):
-    speaker_scores = {}
+class SalesDetector:
+    def __init__(self, config_path: str = "post_processors/config/sales_patterns.yaml"):
+        self._config = ConfigLoader(config_path).get("patterns")
+        self._threshold = 80
 
-    for line in dialog.items:
-        phrase = line.text
-        speaker = line.speaker_id
-        phrase_lower = phrase.lower()
-        score = 0
+    def __call__(self, dialog_rows: List[DialogRow]):
+        speaker_scores = {}
 
-        for manager_phrase in MANAGER_KEYWORDS:
-            similarity = fuzz.partial_ratio(manager_phrase.lower(), phrase_lower)
-            if similarity >= THRESHOLD:
-                score += 1
-        if speaker not in speaker_scores:
-            speaker_scores[speaker] = score
-        else:
-            speaker_scores[speaker] += score
+        for line in dialog_rows:
+            phrase = line.row_text
+            speaker = line.speaker_id
+            phrase_lower = phrase.lower()
+            score = 0
 
-    manager = max(speaker_scores.items(), key=lambda x: x[1])[0]
-    for line in dialog.items:
-        if line.speaker_id == manager:
-            line.speaker_id = "SALES"
-        else:
-            line.speaker_id = "CLIENT"
+            for manager_phrase in self._config:
+                similarity = fuzz.partial_ratio(manager_phrase.lower(), phrase_lower)
+                if similarity >= self._threshold:
+                    score += 1
+            if speaker not in speaker_scores:
+                speaker_scores[speaker] = score
+            else:
+                speaker_scores[speaker] += score
+
+        manager = max(speaker_scores.items(), key=lambda x: x[1])[0]
+        for row in dialog_rows:
+            if row.speaker_id == manager:
+                row.speaker_id = "SALES"
+            else:
+                row.speaker_id = "CLIENT"

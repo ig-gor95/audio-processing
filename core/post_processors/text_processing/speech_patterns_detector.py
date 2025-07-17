@@ -28,8 +28,10 @@ class SpeechPatternsDetector:
     def __call__(self, text: str) -> Optional[str]:
         text = normalize_text(text)
         issues = defaultdict(list)
-
+        interjs_exclude = ['эту', 'эти', 'это', 'эта', 'еще', 'ещё', 'а', 'его', 'эго']
         interjs = self._patterns['interjections'].findall(text)
+        interjs = [item for item in interjs if item not in interjs_exclude]
+
         if interjs:
             issues['interjections'].extend(interjs)
 
@@ -51,12 +53,6 @@ class SpeechPatternsDetector:
 
         words = re.findall(r'\b[а-яё]+\b', text.lower())
 
-        safe_words = {
-            'мама', 'папа', 'бабушка', 'дедушка',
-            'дочка', 'сынок', 'котик', 'зайка',
-            'морсакала', 'римского'
-        }
-
         diminutive_suffixes = [
             ('ик', 5),
             ('чик', 6),
@@ -69,9 +65,6 @@ class SpeechPatternsDetector:
 
         for word in words:
             if len(word) < 5:
-                continue
-
-            if word in safe_words:
                 continue
 
             parsed = self._morph.parse(word)[0]

@@ -17,15 +17,6 @@ class StopWordsDetector:
         patterns = defaultdict(list)
         for base_phrase, variants in stopwords.items():
             patterns[base_phrase].extend(variants)
-
-            words = base_phrase.split()
-            for word in words:
-                parsed = self._morph.parse(word.lower())[0]
-                for form in parsed.lexeme:
-                    if form.word != word:
-                        new_phrase = base_phrase.replace(word, form.word)
-                        patterns[base_phrase].append(new_phrase)
-
         return patterns
 
     def __call__(self, text: str) -> Optional[str]:
