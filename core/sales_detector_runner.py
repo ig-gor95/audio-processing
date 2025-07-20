@@ -1,8 +1,6 @@
-import uuid
 from typing import List
 
-from core.post_processors.text_processing.client_detector import SalesDetector
-from core.post_processors.text_processing.criteria_detector import process_rows_parallel
+from core.post_processors.text_processing.detector.client_detector import SalesDetector
 from core.repository.audio_dialog_repository import AudioDialogRepository
 from core.repository.dialog_criteria_repository import DialogCriteriaRepository
 from core.repository.dialog_rows_repository import DialogRowRepository

@@ -76,12 +76,19 @@ class DialogCriteriaRepository:
                 .filter(DialogCriteria.dialog_criteria_id == criteria_id) \
                 .first()
 
-    def find_by_row_fk_id(self, row_id: UUID) -> list[DialogCriteria]:
+    def find_all_by_row_fk_id(self, row_id: UUID) -> list[DialogCriteria]:
         """Find criteria by its criteria_id."""
         with self._get_session() as session:
             return session.query(DialogCriteria) \
                 .filter(DialogCriteria.dialog_row_fk_id == row_id) \
                 .all()
+
+    def find_by_row_fk_id(self, row_id: UUID) -> DialogCriteria:
+        """Find criteria by its criteria_id."""
+        with self._get_session() as session:
+            return session.query(DialogCriteria) \
+                .filter(DialogCriteria.dialog_row_fk_id == row_id) \
+                .first()
 
     def update_criteria(self, criteria_id: str, update_data: Dict) -> Optional[DialogCriteria]:
         """Update existing criteria."""

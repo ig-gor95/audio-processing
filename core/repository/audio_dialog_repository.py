@@ -1,5 +1,7 @@
 from typing import Optional, List
 from contextlib import contextmanager
+from uuid import UUID
+
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 import logging
@@ -35,6 +37,17 @@ class AudioDialogRepository:
         with self._get_session() as session:
             result = session.query(AudioDialog) \
                 .filter(AudioDialog.file_name == file_name) \
+                .first()
+
+            if result and load_attributes:
+                session.refresh(result)
+
+            return result
+
+    def find_by_id(self, id: UUID, load_attributes: bool = True) -> Optional[AudioDialog]:
+        with self._get_session() as session:
+            result = session.query(AudioDialog) \
+                .filter(AudioDialog.id == id) \
                 .first()
 
             if result and load_attributes:
