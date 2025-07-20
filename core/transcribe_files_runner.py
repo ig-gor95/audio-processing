@@ -8,7 +8,7 @@ import soundfile as sf
 
 from core.audio_to_text.audio_to_text_processor import audio_to_text_processor
 
-from core.post_processors.text_processing.client_detector import detect_manager
+from core.post_processors.text_processing.detector.client_detector import detect_manager
 from core.repository.audio_dialog_repository import AudioDialogRepository
 from core.repository.dialog_rows_repository import DialogRowRepository
 from core.repository.entity.audio_dialog import AudioDialogStatus, AudioDialog

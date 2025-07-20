@@ -34,3 +34,6 @@ class DialogRow(Base):
             has_swear_word=data.get('has_swear_word', False),
             has_greeting=data.get('has_greeting', False)
         )
+
+    def print(self):
+        print(f'{self.start}:{self.end}: [{self.speaker_id}] {self.row_text}')
