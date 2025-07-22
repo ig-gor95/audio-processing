@@ -90,18 +90,30 @@ class DialogCriteriaRepository:
                 .filter(DialogCriteria.dialog_row_fk_id == row_id) \
                 .first()
 
-    def update_criteria(self, criteria_id: str, update_data: Dict) -> Optional[DialogCriteria]:
-        """Update existing criteria."""
+    def update_all_criteria(self, criteria_list: List[DialogCriteria]) -> List[DialogCriteria]:
+        if not criteria_list:
+            return []
+
         with self._get_session() as session:
-            criteria = session.query(DialogCriteria) \
-                .filter(DialogCriteria.dialog_criteria_id == criteria_id) \
-                .first()
+            results = []
 
-            if criteria:
-                for key, value in update_data.items():
-                    setattr(criteria, key, value)
+            for criteria in criteria_list:
+                if getattr(criteria, 'id', None):
+                    persisted = session.merge(criteria)
+                else:
+                    persisted = criteria
+                    session.add(persisted)
 
-            return criteria
+                results.append(persisted)
+
+            try:
+                session.flush()
+                for entity in results:
+                    session.refresh(entity)
+                return results
+            except SQLAlchemyError as e:
+                session.rollback()
+                raise RuntimeError(f"Batch update failed: {str(e)}") from e
 
     def exists(self, dialog_row_id: UUID) -> bool:
         """Check if criteria exists for a dialog row."""

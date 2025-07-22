@@ -1,6 +1,5 @@
-import re
 import uuid
-from typing import Set, Optional
+from typing import Optional
 
 import pymorphy2
 from natasha import MorphVocab, NamesExtractor, NewsEmbedding, NewsMorphTagger, Segmenter, NewsNERTagger, Doc
@@ -21,6 +20,9 @@ from core.repository.dialog_criteria_repository import DialogCriteriaRepository
 from core.repository.entity.dialog_criteria import DialogCriteria
 from yaml_reader import ConfigLoader
 
+
+def parse_bool(bool_str: str) -> bool:
+    return bool_str.lower() == 'true'
 
 class DialogueAnalyzer:
     def __init__(self):
@@ -57,22 +59,24 @@ class DialogueAnalyzer:
         # Repository
         self.dialog_criteria_repo = DialogCriteriaRepository()
 
+
+
     def load_criteria_config(self) -> CriteriaConfig:
-        config_data = ConfigLoader("../criteria_detector_config.yaml").get("criteria")
+        config_data = ConfigLoader("../configs/criteria_detector_config.yaml").get("criteria")
         return CriteriaConfig(
-            swear=bool(config_data.get("swear")),
-            name=bool(config_data.get("name")),
-            order_patterns=bool(config_data.get("order_patterns")),
-            interjections=bool(config_data.get("interjections")),
-            parasites=bool(config_data.get("parasites")),
-            non_professional_patterns=bool(config_data.get("non_professional_patterns")),
-            inappropriate_phrases=bool(config_data.get("inappropriate_phrases")),
-            greetings=bool(config_data.get("greetings")),
-            farewell=bool(config_data.get("farewell")),
-            abbreviations=bool(config_data.get("abbreviations")),
-            slang=bool(config_data.get("slang")),
-            stop_words=bool(config_data.get("stop_words")),
-            diminutives=bool(config_data.get("diminutives")),
+            swear=parse_bool(config_data.get("swear")),
+            name=parse_bool(config_data.get("name")),
+            order_patterns=parse_bool(config_data.get("order_patterns")),
+            interjections=parse_bool(config_data.get("interjections")),
+            parasites=parse_bool(config_data.get("parasites")),
+            non_professional_patterns=parse_bool(config_data.get("non_professional_patterns")),
+            inappropriate_phrases=parse_bool(config_data.get("inappropriate_phrases")),
+            greetings=parse_bool(config_data.get("greetings")),
+            farewell=parse_bool(config_data.get("farewell")),
+            abbreviations=parse_bool(config_data.get("abbreviations")),
+            slang=parse_bool(config_data.get("slang")),
+            stop_words=parse_bool(config_data.get("stop_words")),
+            diminutives=parse_bool(config_data.get("diminutives")),
         )
 
     def extract_valid_names(self, text: str) -> Optional[str]:
@@ -107,8 +111,8 @@ class DialogueAnalyzer:
         non_professional_patterns = self.non_professional_patterns_detector(text) if self.criteria_config.non_professional_patterns else None
         stopwords_found = self.stop_words_detector(text) if self.criteria_config.stop_words else None
         swear_words_found = self.swear_detector(text) if self.criteria_config.swear else None
-        order_result = self.order_pattern_detector(text) if self.criteria_config.order_patterns else None
-        diminutives = self.diminutives_detector(text) if self.criteria_config.diminutives else set()
+        order_result = self.order_pattern_detector(text) if self.criteria_config.order_patterns else {'offer': None, 'processing': None, 'resume': None}
+        diminutives = self.diminutives_detector(text) if self.criteria_config.diminutives else None
 
         if existing_criteria:
             if self.criteria_config.name:
@@ -133,23 +137,24 @@ class DialogueAnalyzer:
                 existing_criteria.order_offer = order_result['offer']
                 existing_criteria.order_processing = order_result['processing']
                 existing_criteria.order_resume = order_result['resume']
+            return existing_criteria
 
         return DialogCriteria(
             dialog_criteria_id=uuid.uuid4(),
             dialog_row_fk_id=row_id,
-            greeting_phrase=greeting_phrase,
-            found_name=found_name,
-            farewell_phrase=farewell_phrase,
-            interjections=interjections,
-            parasite_words=parasites,
-            abbreviations=abbreviations,
-            slang=slang_words,
-            inappropriate_phrases=inappropriate_phrases,
-            non_professional_phrases=non_professional_patterns,
-            diminutives=diminutives,
-            stop_words=stopwords_found,
-            swear_words=swear_words_found,
-            order_offer=order_result['offer'],
-            order_processing=order_result['processing'],
-            order_resume=order_result['resume']
+            greeting_phrase=greeting_phrase if greeting_phrase is not None else '',
+            found_name=found_name if found_name is not None else '',
+            farewell_phrase=farewell_phrase if farewell_phrase is not None else '',
+            interjections=interjections if interjections is not None else '',
+            parasite_words=parasites if parasites is not None else '',
+            abbreviations=abbreviations if abbreviations is not None else '',
+            slang=slang_words if slang_words is not None else '',
+            inappropriate_phrases=inappropriate_phrases if inappropriate_phrases is not None else '',
+            non_professional_phrases=non_professional_patterns if non_professional_patterns is not None else '',
+            diminutives=diminutives if diminutives is not None else '',
+            stop_words=stopwords_found if stopwords_found is not None else '',
+            swear_words=swear_words_found if swear_words_found is not None else '',
+            order_offer=order_result['offer'] if order_result['offer'] is not None else '',
+            order_processing=order_result['processing'] if order_result['processing'] is not None else '',
+            order_resume=order_result['resume'] if order_result['resume'] is not None else ''
         )
