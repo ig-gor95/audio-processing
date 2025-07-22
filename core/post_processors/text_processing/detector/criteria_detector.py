@@ -10,7 +10,7 @@ dialog_criteria_repository = DialogCriteriaRepository()
 
 def analyze_dialogue_enhanced(text, row_id):
     dialog_analyzer = DialogueAnalyzer()
-    dialog_criteria_repository.delete_by_dialog_row_fk_id(row_id)
+    # dialog_criteria_repository.delete_by_dialog_row_fk_id(row_id)
     return dialog_analyzer.analyze_dialogue(text, row_id)
 
 
@@ -20,7 +20,7 @@ def process_row_wrapper(args):
     return analyze_dialogue_enhanced(args['row_text'], args['row_id'])
 
 
-def process_rows_parallel(rows: List[DialogRow], processes=4):
+def process_rows_parallel(rows: List[DialogRow], processes=1):
     data = []
     count = 0
 

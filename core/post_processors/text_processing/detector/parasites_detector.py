@@ -19,7 +19,7 @@ class ParasitesDetector:
 
     def __call__(self, text: str) -> Optional[str]:
         text = normalize_text(text)
-        parasites = list
+        parasites = []
 
         for word in self._patterns:
             if re.search(rf'\b{re.escape(word)}\b', text):
