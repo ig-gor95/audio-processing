@@ -27,6 +27,7 @@ class DialogCriteria(Base):
     non_professional_phrases = Column(JSON)
 
     diminutives = Column(JSON)
+    await_requests = Column(JSON)
 
     stop_words = Column(JSON)
 

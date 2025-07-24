@@ -21,3 +21,10 @@ def print_dialog(dialog_id: UUID):
     rows = get_all_rows_in_order(dialog_id)
     for row in rows:
         row.print()
+
+def print_dialog_with_row_text(dialog_id: UUID, should_be_text: str):
+    rows = get_all_rows_in_order(dialog_id)
+    for row in rows:
+        if (should_be_text in row.row_text.lower()):
+            row.print()
+            print(dialog_id)
