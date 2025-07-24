@@ -12,6 +12,7 @@ class CriteriaConfig:
     order_patterns: bool
     stop_words: bool
     non_professional_patterns: bool
+    await_requests: bool
     greetings: bool
     farewell: bool
     diminutives: bool

@@ -7,6 +7,7 @@ from natasha import MorphVocab, NamesExtractor, NewsEmbedding, NewsMorphTagger, 
 from core.dto.criteria import CriteriaConfig
 from core.post_processors.text_processing.criteria_utils import find_phrase
 from core.post_processors.text_processing.detector.abbreviations_detector import AbbreviationsDetector
+from core.post_processors.text_processing.detector.await_request_detector import AwaitRequestPatternsDetector
 from core.post_processors.text_processing.detector.diminuties_detector import DiminutivesDetector
 from core.post_processors.text_processing.detector.inapropriate_phrases_detector import InappropriatePhrasesDetector
 from core.post_processors.text_processing.detector.interjections_detector import InterjectionsDetector
@@ -30,6 +31,7 @@ class DialogueAnalyzer:
         self.swear_detector = SwearDetector()
         self.stop_words_detector = StopWordsDetector()
         self.interjections_detector = InterjectionsDetector()
+        self.await_request_detector = AwaitRequestPatternsDetector()
         self.diminutives_detector = DiminutivesDetector()
         self.slang_detector = SlangDetector()
         self.abbreviations_detector = AbbreviationsDetector()
@@ -68,6 +70,7 @@ class DialogueAnalyzer:
             name=parse_bool(config_data.get("name")),
             order_patterns=parse_bool(config_data.get("order_patterns")),
             interjections=parse_bool(config_data.get("interjections")),
+            await_requests=parse_bool(config_data.get("await_request_patterns")),
             parasites=parse_bool(config_data.get("parasites")),
             non_professional_patterns=parse_bool(config_data.get("non_professional_patterns")),
             inappropriate_phrases=parse_bool(config_data.get("inappropriate_phrases")),
@@ -102,6 +105,7 @@ class DialogueAnalyzer:
         greeting_phrase = find_phrase(text, self.greeting_phrases) if self.criteria_config.greetings else None
         farewell_phrase = find_phrase(text, self.farewell_phrases) if self.criteria_config.farewell else None
         found_name = self.extract_valid_names(text) if self.criteria_config.name else None
+        await_requests = self.await_request_detector(text) if self.criteria_config.await_requests else None
 
         interjections = self.interjections_detector(text) if self.criteria_config.interjections else None
         abbreviations = self.abbreviations_detector(text) if self.criteria_config.abbreviations else None
@@ -117,6 +121,8 @@ class DialogueAnalyzer:
         if existing_criteria:
             if self.criteria_config.name:
                 existing_criteria.found_name = found_name
+            if self.criteria_config.await_requests:
+                existing_criteria.await_requests = await_requests
             if self.criteria_config.greetings:
                 existing_criteria.greeting_phrase = greeting_phrase
             if self.criteria_config.farewell:

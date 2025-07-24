@@ -1,0 +1,25 @@
+import pymorphy3
+from fuzzywuzzy import fuzz
+from yaml_reader import ConfigLoader
+
+
+class AwaitRequestPatternsDetector:
+    def __init__(self, config_path: str = "post_processors/config/await_request_patterns.yaml"):
+        self._config = ConfigLoader(config_path)
+        self._morph = pymorphy3.MorphAnalyzer()
+        self.await_request_patterns = self._compile_patterns()
+        self._threshold = 95
+
+    def _compile_patterns(self) -> list[str]:
+        return self._config.get('patterns')
+
+
+    def __call__(self, text: str) -> str:
+        text = text.lower()
+        result = []
+
+        for variant in self.await_request_patterns:
+            if (variant in text) or (fuzz.partial_ratio(variant, text) >= self._threshold):
+                result.append(variant)
+
+        return ', '.join(sorted(set(result)))
