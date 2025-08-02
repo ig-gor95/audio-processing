@@ -7,8 +7,8 @@ from typing import List
 import soundfile as sf
 
 from core.audio_to_text.audio_to_text_processor import audio_to_text_processor
+from core.post_processors.text_processing.detector.client_detector import SalesDetector
 
-from core.post_processors.text_processing.detector.client_detector import detect_manager
 from core.repository.audio_dialog_repository import AudioDialogRepository
 from core.repository.dialog_rows_repository import DialogRowRepository
 from core.repository.entity.audio_dialog import AudioDialogStatus, AudioDialog
@@ -23,7 +23,7 @@ dialog_row_repository = DialogRowRepository()
 
 print_lock = threading.Lock()
 duration_lock = threading.Lock()
-
+detector = SalesDetector()
 
 def get_duration(audio_file: Path) -> float:
     with print_lock:
@@ -67,7 +67,6 @@ def run_pipeline(audio_file: Path):
         file_uuid = existing_dialog.id
 
     result = audio_to_text_processor(audio_file)
-    detect_manager(result)
 
     end_time = time.time()
     execution_time = end_time - start_time
@@ -82,6 +81,7 @@ def run_pipeline(audio_file: Path):
         )
         for r in result.items
     ]
+    detector(dialog_rows)
 
     dialog_row_repository.save_bulk(dialog_rows)
 
@@ -114,9 +114,7 @@ def process_files_parallel(audio_files: List[Path], max_workers: int = 4, max_fi
 
 
 if __name__ == "__main__":
-    folder_path = f"{Path.home()}/Documents/Аудио Бринекс/Brinex_in_2025_04/"
+    folder_path = f"{Path.home()}/Documents/Аудио Бринекс/2/"
     audio_files = list(Path(folder_path).glob("*"))
-    #
+    print(f' Total: {len(audio_files)}')
     process_files_parallel(audio_files, max_files=5000)
-    # stopWordsDetector = StopWordsDetector()
-    # print(stopWordsDetector("Я не могу владею этой инфой"))

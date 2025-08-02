@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import logging
 
 from core.config.datasource_config import DatabaseManager
+from core.repository.entity.dialog_criteria import DialogCriteria
 from core.repository.entity.dialog_rows import DialogRow
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,17 @@ class DialogRowRepository:
         """Get all dialog rows"""
         with self._get_session() as session:
             return session.query(DialogRow).all()
+
+    def find_rows_without_criteria(self) -> List[DialogRow]:
+        """Get all DialogRows that do NOT have any DialogCriteria"""
+        with self._get_session() as session:
+            return (
+                session.query(DialogRow)
+                .outerjoin(DialogCriteria, DialogRow.id == DialogCriteria.dialog_row_fk_id)
+                .filter(DialogCriteria.dialog_criteria_id.is_(None))
+                .filter(DialogRow.speaker_id != 'CLIENT')
+                .all()
+            )
 
     def save(self, row: DialogRow) -> DialogRow:
         with self._get_session() as session:

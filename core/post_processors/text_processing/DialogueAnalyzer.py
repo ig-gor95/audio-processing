@@ -102,6 +102,8 @@ class DialogueAnalyzer:
     def analyze_dialogue(self, text: str, row_id: uuid.UUID) -> DialogCriteria:
         """Analyze dialogue text for various linguistic features."""
         existing_criteria = self.dialog_criteria_repo.find_by_row_fk_id(row_id)
+        if existing_criteria != None:
+            return None
         greeting_phrase = find_phrase(text, self.greeting_phrases) if self.criteria_config.greetings else None
         farewell_phrase = find_phrase(text, self.farewell_phrases) if self.criteria_config.farewell else None
         found_name = self.extract_valid_names(text) if self.criteria_config.name else None
