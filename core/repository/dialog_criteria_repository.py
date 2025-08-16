@@ -1,6 +1,8 @@
 from typing import Optional, Dict, List
 from contextlib import contextmanager
 from uuid import UUID
+
+import pandas as pd
 from sqlalchemy.orm import Session, sessionmaker, object_session
 from sqlalchemy.exc import SQLAlchemyError
 import logging
@@ -10,6 +12,7 @@ from core.repository.entity.dialog_criteria import DialogCriteria  # You'll need
 
 logger = logging.getLogger(__name__)
 
+
 class DialogCriteriaRepository:
     def __init__(self, engine=None):
         self.engine = engine or DatabaseManager.get_engine()
@@ -18,13 +21,28 @@ class DialogCriteriaRepository:
             expire_on_commit=False
         )
 
+    def save_pd(self, df: pd.DataFrame):
+        df.to_sql(
+            'dialog_criterias',
+            self.engine,
+            if_exists='append',
+            index=False
+        )
+
+    def pd_get_all_unprocessed_rows(self) -> pd.DataFrame:
+        return pd.read_sql(f"""
+                    SELECT row.*
+                    from dialog_rows row
+                    left join dialog_criterias crit on crit.dialog_row_fk_id = row.id
+                    where crit.dialog_criteria_id is null
+                """, self.engine)
+
     def save_bulk(self, dialog_rows: List[DialogCriteria]) -> None:
         with self._get_session() as session:
             if not all(isinstance(row, DialogCriteria) for row in dialog_rows):
                 raise TypeError("All items must be DialogCriteria instances")
 
             session.bulk_save_objects(dialog_rows)
-
 
     @contextmanager
     def _get_session(self):
@@ -83,12 +101,11 @@ class DialogCriteriaRepository:
                 .filter(DialogCriteria.dialog_row_fk_id == row_id) \
                 .all()
 
-    def find_by_row_fk_id(self, row_id: UUID) -> DialogCriteria:
-        """Find criteria by its criteria_id."""
+    def find_by_row_fk_id_in(self, row_ids: List[UUID]) -> List[DialogCriteria]:
         with self._get_session() as session:
             return session.query(DialogCriteria) \
-                .filter(DialogCriteria.dialog_row_fk_id == row_id) \
-                .first()
+                .filter(DialogCriteria.dialog_row_fk_id.in_(row_ids)) \
+                .all()
 
     def update_all_criteria(self, criteria_list: List[DialogCriteria]) -> List[DialogCriteria]:
         if not criteria_list:

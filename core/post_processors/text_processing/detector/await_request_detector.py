@@ -1,5 +1,11 @@
+from functools import partial
+
+import numpy as np
+from rapidfuzz import process, fuzz
+import pandas as pd
 import pymorphy3
-from fuzzywuzzy import fuzz
+
+from core.post_processors.text_processing.criteria_utils import find_phrases_in_df
 from yaml_reader import ConfigLoader
 
 
@@ -13,13 +19,5 @@ class AwaitRequestPatternsDetector:
     def _compile_patterns(self) -> list[str]:
         return self._config.get('patterns')
 
-
-    def __call__(self, text: str) -> str:
-        text = text.lower()
-        result = []
-
-        for variant in self.await_request_patterns:
-            if (variant in text) or (fuzz.partial_ratio(variant, text) >= self._threshold):
-                result.append(variant)
-
-        return ', '.join(sorted(set(result)))
+    def __call__(self, df: pd.DataFrame, text_column='row_text') -> pd.Series:
+        return find_phrases_in_df(df, self.await_request_patterns, threshold=95)

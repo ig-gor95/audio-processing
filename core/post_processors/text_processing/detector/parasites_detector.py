@@ -1,6 +1,8 @@
 import re
+from functools import lru_cache
 from typing import Optional
 
+import pandas as pd
 import pymorphy2
 
 from core.post_processors.text_processing.criteria_utils import normalize_text
@@ -17,12 +19,19 @@ class ParasitesDetector:
         parasite_patterns = self._config.get('speech_patterns')['parasites']
         return parasite_patterns
 
-    def __call__(self, text: str) -> Optional[str]:
-        text = normalize_text(text)
-        parasites = []
+    def __call__(self, df: pd.DataFrame, text_column='row_text'):
+        # Pre-normalize all texts once (vectorized operation)
+        texts = df[text_column].apply(normalize_text)
 
-        for word in self._patterns:
-            if re.search(rf'\b{re.escape(word)}\b', text):
-                parasites.append(word)
+        patterns = [(word, re.compile(rf'\b{re.escape(word)}\b'))
+                    for word in self._patterns]
 
-        return ', '.join(sorted(set(parasites)))
+        @lru_cache(maxsize=1000)
+        def cached_find_match(text):
+            found = set()
+            for word, pattern in patterns:
+                if pattern.search(text):
+                    found.add(word)
+            return ', '.join(sorted(found)) if found else ''
+
+        return texts.apply(cached_find_match)

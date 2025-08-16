@@ -1,8 +1,11 @@
 from pathlib import Path
 import numpy as np
+from pyannote.audio import Pipeline
+from pydub import AudioSegment
+from resemblyzer import VoiceEncoder, preprocess_wav
 from sklearn.metrics import silhouette_score
 import torch
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, SpectralClustering
 from sklearn.mixture import BayesianGaussianMixture
 from speechbrain.inference import EncoderClassifier
 from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
@@ -18,7 +21,7 @@ config = ConfigLoader("../configs/config.yaml")
 SAMPLE_RATE = config.get('audio.sample_rate')
 MIN_SEGMENT_LENGTH = config.get('diarize.min_segment_length', 0.75)
 TARGET_SEGMENT_LENGTH = config.get('diarize.target_segment_length', 1.5)
-MAX_SPEAKERS = config.get('diarize.max_speakers', 5)
+MAX_SPEAKERS = config.get('diarize.max_speakers', 2)
 
 
 def pad_segment(wav: torch.Tensor, target_samples: int) -> torch.Tensor:
@@ -59,11 +62,20 @@ def estimate_optimal_clusters(embeddings: np.ndarray) -> int:
     return best_n
 
 
+def read_audio_with_sr(file_path: Path):
+    """Read audio file and return (audio, sample_rate)"""
+    try:
+        import torchaudio
+        audio, sr = torchaudio.load(file_path)
+        return audio.squeeze(0), sr
+    except Exception as e:
+        logger.error(f"Audio loading failed: {e}")
+        raise
+
 def diarize(file_path: Path) -> DiarizedResult:
     """Main diarization pipeline"""
     logger.info(f"Diarizing {file_path.name}")
 
-    # Load models
     try:
         embedding_model = EncoderClassifier.from_hparams(
             source=config.get("diarize.model_name"),
@@ -74,7 +86,6 @@ def diarize(file_path: Path) -> DiarizedResult:
         logger.error(f"Model loading failed: {e}")
         return DiarizedResult([], np.array([]))
 
-    # Read and analyze audio
     try:
         audio = read_audio(file_path)
         speech_timestamps = get_speech_timestamps(
@@ -131,8 +142,12 @@ def diarize(file_path: Path) -> DiarizedResult:
     # Cluster selection
 
     n_clusters = estimate_optimal_clusters(embeddings_np)
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-    labels = kmeans.fit_predict(embeddings_np)
+    spectral = SpectralClustering(
+        n_clusters=n_clusters,
+        affinity='nearest_neighbors',
+        random_state=42
+    )
+    labels = spectral.fit_predict(embeddings_np)
 
     logger.info(
         f"Diarization complete. Segments: {len(valid_segments)}, "
