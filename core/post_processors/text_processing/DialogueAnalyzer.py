@@ -20,7 +20,7 @@ from core.post_processors.text_processing.detector.swear_detector import SwearDe
 from core.repository.dialog_criteria_repository import DialogCriteriaRepository
 from core.repository.entity.dialog_criteria import DialogCriteria
 from yaml_reader import ConfigLoader
-
+from natasha import NamesExtractor
 
 def parse_bool(bool_str: str) -> bool:
     return bool_str.lower() == 'true'
@@ -84,25 +84,30 @@ class DialogueAnalyzer:
 
     def extract_valid_names(self, text: str) -> Optional[str]:
         """Extract names considering introduction context."""
-        doc = Doc(text)
-        doc.segment(self.segmenter)
-        doc.tag_morph(self.morph_tagger)
-        doc.tag_ner(self.ner_tagger)
+        morph_vocab = MorphVocab()
+        extractor = NamesExtractor(morph_vocab)
+        matches = extractor(text)
+        morph_analyzer = pymorphy2.MorphAnalyzer()
 
-        names = []
-        for span in doc.spans:
-            if span.type == 'PER':
-                start_pos = span.start
-                prev_words = ' '.join(token.text for token in doc.tokens[:start_pos]).lower()
-                if any(phrase in prev_words for phrase in self.name_phrases):
-                    names.append(span.text)
+        valid_names = []
+        for match in matches:
+            if match.fact.first is None:
+                continue
+            name = match.fact.first
+            parsed = morph_analyzer.parse(name)
+            if not parsed:
+                continue
 
-        return names[0] if names else None
+            is_proper_noun = any('Name' in p.tag or 'Surn' in p.tag for p in parsed)
+            if (is_proper_noun and name[0].isupper()):  # should be capitalized
+                valid_names.append(name)
+
+        return ', '.join(valid_names) if valid_names else None
 
     def analyze_dialogue(self, text: str, row_id: uuid.UUID) -> DialogCriteria:
         """Analyze dialogue text for various linguistic features."""
         existing_criteria = self.dialog_criteria_repo.find_by_row_fk_id(row_id)
-        if existing_criteria != None:
+        if existing_criteria is not None:
             return None
         greeting_phrase = find_phrase(text, self.greeting_phrases) if self.criteria_config.greetings else None
         farewell_phrase = find_phrase(text, self.farewell_phrases) if self.criteria_config.farewell else None

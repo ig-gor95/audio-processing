@@ -20,7 +20,7 @@ def process_row_wrapper(args):
     return analyze_dialogue_enhanced(args['row_text'], args['row_id'])
 
 
-def process_rows_parallel(rows: List[DialogRow], processes=3):
+def process_rows_parallel(rows: List[DialogRow], processes=6):
     data = []
     count = 0
 

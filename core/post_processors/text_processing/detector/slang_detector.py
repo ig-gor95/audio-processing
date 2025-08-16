@@ -1,12 +1,13 @@
 import re
 from typing import Optional
 
+import pandas as pd
 import pymorphy2
 
 from core.post_processors.text_processing.criteria_utils import normalize_text
 from yaml_reader import ConfigLoader
 
-
+exclude = ['-го']
 class SlangDetector:
     def __init__(self, config_path: str = "post_processors/config/parasites_patterns.yaml"):
         self._config = ConfigLoader(config_path)
@@ -16,12 +17,17 @@ class SlangDetector:
     def _compile_patterns(self) -> list[str]:
         return self._config.get('speech_patterns')['slang']
 
-    def __call__(self, text: str) -> Optional[str]:
-        text = normalize_text(text)
-        slang_words = list()
+    def __call__(self, df: pd.DataFrame, text_column='row_text'):
+        texts = df[text_column].apply(normalize_text)
 
-        for word in self._patterns:
-            if re.search(rf'\b{re.escape(word)}\b', text):
-                slang_words.append(word)
+        def find_match(text):
+            slang_words = list()
 
-        return ', '.join(sorted(set(slang_words)))
+            for word in self._patterns:
+                if re.search(rf'\b{re.escape(word)}\b', text):
+                    if word not in exclude:
+                        slang_words.append(word)
+
+            return ', '.join(sorted(set(slang_words)))
+
+        return texts.apply(find_match)

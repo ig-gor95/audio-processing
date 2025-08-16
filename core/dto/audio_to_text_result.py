@@ -57,7 +57,7 @@ class ProcessingResults:
         self.items.append(ProcessingResult(
             phrase_id=len(self.items) + 1,
             speaker=speaker,
-            text=text,
+            text=text.replace("Продолжение следует...", '').replace('Субтитры сделал DimaTorzok', ''),
             start_time=start_time,
             end_time=end_time,
             is_copy_line=is_copy_line)

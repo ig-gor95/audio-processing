@@ -1,3 +1,7 @@
+from collections import defaultdict
+
+import pandas as pd
+
 from yaml_reader import ConfigLoader
 from typing import Optional
 import re
@@ -20,11 +24,22 @@ class SwearDetector:
             )
         return compiled_patterns
 
-    def __call__(self, text: str) -> Optional[str]:
-        found_words = set()
-        text_lower = text.lower()
+    def __call__(self, df: pd.DataFrame, text_column='row_text'):
+        texts = df[text_column].str.lower()  # Vectorized lowercase conversion
 
+        pattern_cache = defaultdict(set)
         for pattern in self._patterns:
-            found_words.update(pattern.findall(text_lower))
+            for found in pattern.findall('dummy'):  # Extract capture groups
+                pattern_cache[found].add(pattern)
 
-        return ', '.join(sorted(found_words)) if found_words else None
+        combined_pattern = re.compile(
+            '|'.join(f'(?:{pattern.pattern})' for pattern in self._patterns),
+            flags=re.IGNORECASE
+        )
+
+        def find_match(text):
+            matches = combined_pattern.findall(text)
+            unique_matches = set(matches)
+            return ', '.join(sorted(unique_matches)) if unique_matches else None
+
+        return texts.apply(find_match)

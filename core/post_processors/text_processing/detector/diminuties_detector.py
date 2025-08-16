@@ -1,7 +1,9 @@
 import re
 from collections import defaultdict
+from functools import lru_cache
 from typing import Optional
 
+import pandas as pd
 import pymorphy2
 
 from core.post_processors.text_processing.criteria_utils import normalize_text
@@ -22,25 +24,42 @@ class DiminutivesDetector:
             ('еньк', 6)
         ]
 
-    def __call__(self, text: str) -> Optional[str]:
-        text = normalize_text(text)
-        diminutives = list()
-        words = re.findall(r'\b[а-яё]+\b', text.lower())
+    def __call__(self, df: pd.DataFrame, text_column='row_text'):
+        # Pre-compile regex and pre-process suffixes
+        word_pattern = re.compile(r'\b[а-яё]+\b')
+        suffixes = [(suf.lower(), min_len) for suf, min_len in self.diminutive_suffixes]
 
-        for word in words:
-            if len(word) < 5:
-                continue
+        # Vectorized text normalization
+        texts = df[text_column].apply(normalize_text)
 
+        # Cache morph analysis results
+        @lru_cache(maxsize=10000)
+        def analyze_word(word):
             parsed = self._morph.parse(word)[0]
+            return (
+                parsed.normal_form,
+                any(tag in parsed.tag for tag in ['Name', 'Geox', 'Surn'])
+            )
 
-            has_suffix = any(word.endswith(suf) and len(word) >= min_len
-                             for suf, min_len in self.diminutive_suffixes)
+        def find_match(text):
+            words = word_pattern.findall(text.lower())
+            diminutives = set()
 
-            if has_suffix:
-                normal_form = parsed.normal_form
-                is_name = any(tag in parsed.tag for tag in ['Name', 'Geox', 'Surn'])
+            for word in words:
+                if len(word) < 5:
+                    continue
+
+                # Fast suffix check first
+                if not any(word.endswith(suf) and len(word) >= min_len
+                           for suf, min_len in suffixes):
+                    continue
+
+                # Then do morph analysis
+                normal_form, is_name = analyze_word(word)
 
                 if (normal_form != word) and not is_name:
-                    diminutives.append(word)
+                    diminutives.add(word)
 
-        return ', '.join(sorted(set(diminutives)))
+            return ', '.join(sorted(diminutives)) if diminutives else None
+
+        return texts.apply(find_match)
