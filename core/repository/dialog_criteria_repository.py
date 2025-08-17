@@ -35,6 +35,7 @@ class DialogCriteriaRepository:
                     from dialog_rows row
                     left join dialog_criterias crit on crit.dialog_row_fk_id = row.id
                     where crit.dialog_criteria_id is null
+                    and row.row_text is not null and row.row_text != ' ' and row.row_text != ''
                 """, self.engine)
 
     def save_bulk(self, dialog_rows: List[DialogCriteria]) -> None:
