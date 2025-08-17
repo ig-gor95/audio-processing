@@ -60,6 +60,8 @@ class DialogueAnalyzerPandas:
         self.phrase_patterns = ConfigLoader("post_processors/config/phrase_patterns.yaml").get("patterns")
         self.greeting_phrases = self.phrase_patterns['greetings']
         self.farewell_phrases = self.phrase_patterns['farewell']
+        self.farewell_phrases = self.phrase_patterns['farewell']
+        self.telling_name_phrases = self.phrase_patterns['telling-name-phrases']
         self.name_phrases = self.phrase_patterns['name-phrases']
         self.criteria_config = self.load_criteria_config()
 
@@ -117,6 +119,8 @@ class DialogueAnalyzerPandas:
         logger.info(f"Recognised await_requests")
         unprocessed_rows_pd['farewell_phrase'] = find_phrases_in_df(unprocessed_rows_pd, self.farewell_phrases)
         logger.info(f"Recognised farewell_phrase")
+        unprocessed_rows_pd['telling_name_phrases'] = find_phrases_in_df(unprocessed_rows_pd, self.telling_name_phrases)
+        logger.info(f"Recognised telling_name_phrases")
         unprocessed_rows_pd['greeting_phrase'] = find_phrases_in_df(unprocessed_rows_pd, self.greeting_phrases)
         logger.info(f"Recognised greeting_phrase")
         unprocessed_rows_pd['interjections'] = self.interjections_detector(unprocessed_rows_pd)
@@ -151,8 +155,8 @@ class DialogueAnalyzerPandas:
         logger.info(f"Set up dialog_criteria_id")
         unprocessed_rows_pd['dialog_row_fk_id'] = unprocessed_rows_pd.pop('id')
 
-        dialog_criteria_pd = unprocessed_rows_pd[['dialog_criteria_id', 'dialog_row_fk_id', 'greeting_phrase', 'found_name', 'found_name',
-                             'interjections', 'interjections', 'parasite_words', 'abbreviations', 'slang',
+        dialog_criteria_pd = unprocessed_rows_pd[['dialog_criteria_id', 'dialog_row_fk_id', 'greeting_phrase', 'found_name',
+                             'interjections', 'parasite_words', 'abbreviations', 'slang',
                              'inappropriate_phrases', 'diminutives', 'stop_words', 'swear_words',
                              'non_professional_phrases', 'order_offer', 'order_processing', 'order_resume', 'await_requests']]
         logger.info(f"Saving results..")

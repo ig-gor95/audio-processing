@@ -23,18 +23,28 @@ class OrderPatternsDetector:
         return self._config.get('patterns')['resume']
 
     def __call__(self, df: pd.DataFrame, text_column='row_text'):
-        texts = df[text_column].str.lower().values  # Convert to numpy array
+        texts = df[text_column].str.lower().values
 
         def batch_match(texts, patterns):
-            exact_matches = [next((p for p in patterns if p in t), None) for t in texts]
-            needs_fuzzy = [i for i, m in enumerate(exact_matches) if m is None]
+            exact_matches = []
+            for t in texts:
+                matched_pattern = None
+                for p in patterns:
+                    pattern_words = set(p.split())
+                    text_words = set(t.split())
+                    if pattern_words.issubset(text_words):
+                        matched_pattern = p
+                        break
+                exact_matches.append(matched_pattern)
 
+            needs_fuzzy = [i for i, m in enumerate(exact_matches) if m is None]
             fuzzy_results = [None] * len(texts)
+
             for i in needs_fuzzy:
                 result = process.extractOne(
                     texts[i],
                     patterns,
-                    scorer=fuzz.partial_ratio,
+                    scorer=fuzz.token_set_ratio,
                     score_cutoff=self._threshold
                 )
                 fuzzy_results[i] = result[0] if result else None
