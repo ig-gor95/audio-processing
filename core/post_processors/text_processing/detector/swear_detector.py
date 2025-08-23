@@ -24,12 +24,12 @@ class SwearDetector:
             )
         return compiled_patterns
 
-    def __call__(self, df: pd.DataFrame, text_column='row_text'):
-        texts = df[text_column].str.lower()  # Vectorized lowercase conversion
+    def __call__(self, texts: pd.DataFrame):
+        texts = texts.str.lower()
 
         pattern_cache = defaultdict(set)
         for pattern in self._patterns:
-            for found in pattern.findall('dummy'):  # Extract capture groups
+            for found in pattern.findall('dummy'):
                 pattern_cache[found].add(pattern)
 
         combined_pattern = re.compile(

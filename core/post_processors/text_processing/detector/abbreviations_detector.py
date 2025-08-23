@@ -21,9 +21,7 @@ class AbbreviationsDetector:
         parasite_patterns['abbreviations'] = re.compile(parasite_patterns['abbreviations_pattern'])
         return parasite_patterns
 
-    def __call__(self, df: pd.DataFrame, text_column='row_text') -> pd.Series:
-        texts = df[text_column].apply(normalize_text)
-
+    def __call__(self, texts: pd.DataFrame) -> pd.Series:
         abbrev_pattern = self._patterns['abbreviations']
 
         if isinstance(abbrev_pattern, re.Pattern):

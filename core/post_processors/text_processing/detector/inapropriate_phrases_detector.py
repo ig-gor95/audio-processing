@@ -13,10 +13,7 @@ class InappropriatePhrasesDetector:
     def _compile_patterns(self) -> str:
         return self._config.get('speech_patterns')['inappropriate_phrases']
 
-    def __call__(self, df: pd.DataFrame, text_column='row_text'):
-        # Pre-process all texts once
-        texts = df[text_column].apply(normalize_text)
-
+    def __call__(self, texts: pd.DataFrame):
         # Pre-compute all patterns for faster access
         patterns = list(self._patterns)
 

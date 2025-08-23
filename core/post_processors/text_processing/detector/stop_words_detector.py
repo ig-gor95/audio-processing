@@ -20,8 +20,8 @@ class StopWordsDetector:
             patterns[base_phrase].extend(variants)
         return patterns
 
-    def __call__(self, df: pd.DataFrame, text_column='row_text'):
-        texts = df[text_column].str.lower()
+    def __call__(self, texts: pd.DataFrame):
+        texts = texts.str.lower()
         all_variants = [v for variants in self._patterns.values() for v in variants]
 
         def find_match(text):

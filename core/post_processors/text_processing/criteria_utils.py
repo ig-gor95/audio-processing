@@ -41,9 +41,7 @@ def find_phrase(text, phrases, threshold=80):
     return None
 
 
-def find_phrases_in_df(df, phrases, threshold=80, text_column='row_text'):
-    normalized_texts = df[text_column].apply(normalize_text)
-
+def find_phrases_in_df(normalized_texts, phrases, threshold=80):
     return normalized_texts.apply(
         lambda text: (
             process.extractOne(
@@ -98,11 +96,11 @@ def _process_chunk(texts_chunk, min_name_length):
     return chunk_results
 
 
-def extract_valid_names(df, text_column='row_text', min_name_length=3, n_workers=None):
+def extract_valid_names(texts, min_name_length=3, n_workers=None):
     """Parallel name extraction with proper serialization."""
     n_workers = n_workers or cpu_count()
 
-    text_values = df[text_column].values
+    text_values = texts.values
     text_chunks = np.array_split(text_values, n_workers * 4)
 
     worker = partial(_process_chunk, min_name_length=min_name_length)
@@ -112,5 +110,5 @@ def extract_valid_names(df, text_column='row_text', min_name_length=3, n_workers
 
     return pd.Series(
         [item for sublist in results for item in sublist],
-        index=df.index
+        index=texts.index
     )

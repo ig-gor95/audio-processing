@@ -8,7 +8,7 @@ from typing import List
 import soundfile as sf
 
 from core.audio_to_text.audio_to_text_processor import audio_to_text_processor
-from core.post_processors.text_processing.detector.client_detector import SalesDetector
+from core.post_processors.text_processing.detector.sales_detector import SalesDetector
 
 from core.repository.audio_dialog_repository import AudioDialogRepository
 from core.repository.dialog_criteria_repository import DialogCriteriaRepository

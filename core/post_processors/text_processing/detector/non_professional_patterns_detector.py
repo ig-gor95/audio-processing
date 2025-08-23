@@ -14,8 +14,8 @@ class NonProfessionalPatternsDetector:
     def _compile_patterns(self) -> list[str]:
         return self._config.get('patterns')
 
-    def __call__(self, df: pd.DataFrame, text_column='row_text'):
-        texts = df[text_column].str.lower()
+    def __call__(self, texts: pd.DataFrame):
+        texts = texts.str.lower()
 
         patterns = list(self._patterns)
         exact_pattern = re.compile(r'\b(?:' + '|'.join(map(re.escape, patterns)) + r')\b')
