@@ -19,10 +19,7 @@ class ParasitesDetector:
         parasite_patterns = self._config.get('speech_patterns')['parasites']
         return parasite_patterns
 
-    def __call__(self, df: pd.DataFrame, text_column='row_text'):
-        # Pre-normalize all texts once (vectorized operation)
-        texts = df[text_column].apply(normalize_text)
-
+    def __call__(self, texts: pd.DataFrame):
         patterns = [(word, re.compile(rf'\b{re.escape(word)}\b'))
                     for word in self._patterns]
 

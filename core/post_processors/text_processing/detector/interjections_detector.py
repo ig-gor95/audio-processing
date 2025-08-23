@@ -17,9 +17,7 @@ class InterjectionsDetector:
         parasite_patterns = self._config.get('speech_patterns')
         return re.compile(parasite_patterns['interjections'])
 
-    def __call__(self, df: pd.DataFrame, text_column='row_text') -> pd.Series:
-        texts = df[text_column].apply(normalize_text)
-
+    def __call__(self, texts: pd.DataFrame) -> pd.Series:
         interjection_pattern = self.interjections_patterns
         exclude_set = set(self.exclude)
 

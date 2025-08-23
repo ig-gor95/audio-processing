@@ -24,13 +24,10 @@ class DiminutivesDetector:
             ('еньк', 6)
         ]
 
-    def __call__(self, df: pd.DataFrame, text_column='row_text'):
+    def __call__(self, texts: pd.DataFrame, text_column='row_text'):
         # Pre-compile regex and pre-process suffixes
         word_pattern = re.compile(r'\b[а-яё]+\b')
         suffixes = [(suf.lower(), min_len) for suf, min_len in self.diminutive_suffixes]
-
-        # Vectorized text normalization
-        texts = df[text_column].apply(normalize_text)
 
         # Cache morph analysis results
         @lru_cache(maxsize=10000)

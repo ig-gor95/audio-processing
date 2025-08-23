@@ -17,9 +17,7 @@ class SlangDetector:
     def _compile_patterns(self) -> list[str]:
         return self._config.get('speech_patterns')['slang']
 
-    def __call__(self, df: pd.DataFrame, text_column='row_text'):
-        texts = df[text_column].apply(normalize_text)
-
+    def __call__(self, texts: pd.DataFrame):
         def find_match(text):
             slang_words = list()
 
