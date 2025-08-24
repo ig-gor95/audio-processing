@@ -11,7 +11,7 @@ class StopWordsDetector:
         self._config = ConfigLoader(config_path)
         self._morph = pymorphy3.MorphAnalyzer()
         self._patterns = self._compile_patterns()
-        self._threshold = 95
+        self._threshold = 98
 
     def _compile_patterns(self) -> list[re.Pattern]:
         stopwords = self._config.get('patterns')

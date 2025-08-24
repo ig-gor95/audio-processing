@@ -123,12 +123,37 @@ class DialogueAnalyzerPandas:
 
         return result
 
+    def update_client_between_await_and_greeting(self, df: pd.DataFrame):
+        result_df = df.copy()
+
+        for dialog_id, group in df.groupby('audio_dialog_fk_id'):
+            sorted_group = group.sort_values('row_num')
+            sorted_group_reset = sorted_group.reset_index()  # Reset index for positional access
+
+            await_positions = sorted_group_reset.index[sorted_group_reset['await_requests'].notna()].tolist()
+            greeting_positions = sorted_group_reset.index[sorted_group_reset['greeting_phrase'].notna()].tolist()
+
+            for await_pos in await_positions:
+                next_greetings = [pos for pos in greeting_positions if pos > await_pos]
+
+                if next_greetings:
+                    next_greeting_pos = min(next_greetings)
+                    rows_between = next_greeting_pos - await_pos - 1
+
+                    if 1 < rows_between <= 5:
+                        # Get the original indices of rows between await and greeting
+                        for pos in range(await_pos + 1, next_greeting_pos):
+                            original_idx = sorted_group_reset.loc[pos, 'index']  # This gets the original index
+                            if pd.isna(result_df.loc[original_idx, 'await_requests']):
+                                result_df.loc[original_idx, 'detected_speaker_id'] = 'SHOULD_BE_CLIENT'
+
+        return result_df
+
     def analyze_dialogue(self):
         """Analyze dialogue text for various linguistic features."""
         dialog_criteria_repository = DialogCriteriaRepository()
 
         unprocessed_rows_pd = dialog_criteria_repository.pd_get_all_unprocessed_rows()
-        unprocessed_rows_pd['detected_speaker_id'] = self.detect_sales(unprocessed_rows_pd)
 
         logger.info(f"Retrieved {len(unprocessed_rows_pd)} dialogue rows")
         texts = unprocessed_rows_pd['row_text'].apply(normalize_text)
@@ -173,11 +198,12 @@ class DialogueAnalyzerPandas:
         unprocessed_rows_pd['dialog_row_fk_id'] = unprocessed_rows_pd.pop('id')
         logger.info(f"Set detected_speaker_id")
         unprocessed_rows_pd['detected_speaker_id'] = self.detect_sales(unprocessed_rows_pd)
-
+        logger.info(f"Update client between await and greeting")
+        unprocessed_rows_pd = self.update_client_between_await_and_greeting(unprocessed_rows_pd)
         dialog_criteria_pd = unprocessed_rows_pd[
             ['dialog_criteria_id', 'dialog_row_fk_id', 'greeting_phrase', 'found_name',
              'interjections', 'parasite_words', 'abbreviations', 'slang', 'telling_name_phrases',
              'inappropriate_phrases', 'diminutives', 'stop_words', 'swear_words',
-             'non_professional_phrases', 'order_offer', 'order_processing', 'order_resume', 'await_requests']]
+             'non_professional_phrases', 'order_offer', 'order_processing', 'order_resume', 'await_requests', 'detected_speaker_id']]
         logger.info(f"Saving results..")
         dialog_criteria_repository.save_pd(dialog_criteria_pd)
