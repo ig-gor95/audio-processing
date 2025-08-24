@@ -8,7 +8,7 @@ class InappropriatePhrasesDetector:
     def __init__(self, config_path: str = "post_processors/config/parasites_patterns.yaml"):
         self._config = ConfigLoader(config_path)
         self._patterns = self._compile_patterns()
-        self._threshold = 85
+        self._threshold = 97
 
     def _compile_patterns(self) -> str:
         return self._config.get('speech_patterns')['inappropriate_phrases']
