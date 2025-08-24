@@ -127,7 +127,7 @@ def process_files_parallel(audio_files: List[Path], max_workers: int = 3, max_fi
 
 if __name__ == "__main__":
     # print_dialog(uuid.UUID("247699f2-5337-40b3-b6a8-4c3b14449fa8"))
-    folder_path = f"{Path.home()}/Documents/Аудио Бринекс/Brinex_in_2025_04/"
+    folder_path = f"{Path.home()}/Documents/Аудио Бринекс/1/"
     audio_file = Path(folder_path)
     process_files_parallel([audio_file], max_files=5000)
 
