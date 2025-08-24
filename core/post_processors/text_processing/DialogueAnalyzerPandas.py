@@ -128,22 +128,25 @@ class DialogueAnalyzerPandas:
 
         for dialog_id, group in df.groupby('audio_dialog_fk_id'):
             sorted_group = group.sort_values('row_num')
-            sorted_group_reset = sorted_group.reset_index()  # Reset index for positional access
+            sorted_group_reset = sorted_group.reset_index()
 
             await_positions = sorted_group_reset.index[sorted_group_reset['await_requests'].notna()].tolist()
             greeting_positions = sorted_group_reset.index[sorted_group_reset['greeting_phrase'].notna()].tolist()
 
-            for await_pos in await_positions:
+            for i, await_pos in enumerate(await_positions):
+                next_awaits = [pos for pos in await_positions[i + 1:] if pos > await_pos]
                 next_greetings = [pos for pos in greeting_positions if pos > await_pos]
+
+                if next_awaits and (not next_greetings or min(next_awaits) < min(next_greetings)):
+                    continue
 
                 if next_greetings:
                     next_greeting_pos = min(next_greetings)
                     rows_between = next_greeting_pos - await_pos - 1
 
                     if 1 < rows_between <= 5:
-                        # Get the original indices of rows between await and greeting
                         for pos in range(await_pos + 1, next_greeting_pos):
-                            original_idx = sorted_group_reset.loc[pos, 'index']  # This gets the original index
+                            original_idx = sorted_group_reset.loc[pos, 'index']
                             if pd.isna(result_df.loc[original_idx, 'await_requests']):
                                 result_df.loc[original_idx, 'detected_speaker_id'] = 'SHOULD_BE_CLIENT'
 

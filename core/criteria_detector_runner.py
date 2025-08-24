@@ -43,25 +43,25 @@ def extract_valid_names(text: str) -> Optional[str]:
 
 
 if __name__ == "__main__":
-    res = extract_valid_names("Вот такая тема возникла. А клава придет")
-    print(res)
-    dialog_rows_repository = DialogRowRepository()
-    audio_dialog_repository = AudioDialogRepository()
-    dialog_criteria_repository = DialogCriteriaRepository()
+    # res = extract_valid_names("Вот такая тема возникла. А клава придет")
+    # print(res)
+    # dialog_rows_repository = DialogRowRepository()
+    # audio_dialog_repository = AudioDialogRepository()
+    # dialog_criteria_repository = DialogCriteriaRepository()
 
     # rows = dialog_rows_repository.find_by_dialog_id(uuid.UUID('b6444029-efbd-4994-9f7b-3e07022fa386'))
     # rows = dialog_rows_repository.find_all()
 
-    rows = dialog_rows_repository.find_rows_without_criteria()
-    total = len(rows)
-    count = 0
-    for chunk in chunk_list(rows):
-        result = process_rows_parallel(chunk)
-        count += 1000
-        print(f"saved {len(result)} rows. Processed {count} of {total} rows.")
-        dialog_criteria_repository.update_all_criteria(result)
-    dialogs = audio_dialog_repository.find_all()
-    for dialog in dialogs:
-        print_dialog_with_row_text(dialog.id, 'за ожидание')
+    # rows = dialog_rows_repository.find_rows_without_criteria()
+    # total = len(rows)
+    # count = 0
+    # for chunk in chunk_list(rows):
+    #     result = process_rows_parallel(chunk)
+    #     count += 1000
+    #     print(f"saved {len(result)} rows. Processed {count} of {total} rows.")
+    #     dialog_criteria_repository.update_all_criteria(result)
+    # dialogs = audio_dialog_repository.find_all()
+    # for dialog in dialogs:
+    #     print_dialog_with_row_text(dialog.id, 'за ожидание')
 
-    print_dialog(uuid.UUID("1c6769b3-397b-44ea-b203-f6740a3677f4"))
+    print_dialog(uuid.UUID("50de1958-185c-461a-96e5-ddc5c6246f58"))
