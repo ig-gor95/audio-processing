@@ -3,10 +3,10 @@ from typing import Optional
 
 import pandas as pd
 import pymorphy2
-from natasha import MorphVocab, NewsEmbedding, NewsMorphTagger, Segmenter, NewsNERTagger, Doc
-
+from natasha import MorphVocab, NewsEmbedding, NewsMorphTagger, Segmenter, NewsNERTagger
+from natasha import NamesExtractor
 from core.dto.criteria import CriteriaConfig
-from core.post_processors.text_processing.criteria_utils import find_phrase, find_phrases_in_df, extract_valid_names, \
+from core.post_processors.text_processing.criteria_utils import find_phrases_in_df, extract_valid_names, \
     normalize_text
 from core.post_processors.text_processing.detector.abbreviations_detector import AbbreviationsDetector
 from core.post_processors.text_processing.detector.await_request_detector import AwaitRequestPatternsDetector
@@ -24,7 +24,6 @@ from core.post_processors.text_processing.detector.swear_detector import SwearDe
 from core.repository.dialog_criteria_repository import DialogCriteriaRepository
 from log_utils import setup_logger
 from yaml_reader import ConfigLoader
-from natasha import NamesExtractor
 
 logger = setup_logger(__name__)
 
@@ -206,7 +205,7 @@ class DialogueAnalyzerPandas:
         dialog_criteria_pd = unprocessed_rows_pd[
             ['dialog_criteria_id', 'dialog_row_fk_id', 'greeting_phrase', 'found_name',
              'interjections', 'parasite_words', 'abbreviations', 'slang', 'telling_name_phrases',
-             'inappropriate_phrases', 'diminutives', 'stop_words', 'swear_words',
-             'non_professional_phrases', 'order_offer', 'order_processing', 'order_resume', 'await_requests', 'detected_speaker_id']]
+             'inappropriate_phrases', 'diminutives', 'stop_words', 'swear_words', 'detected_speaker_id',
+             'non_professional_phrases', 'order_offer', 'order_processing', 'order_resume', 'await_requests']]
         logger.info(f"Saving results..")
         dialog_criteria_repository.save_pd(dialog_criteria_pd)
