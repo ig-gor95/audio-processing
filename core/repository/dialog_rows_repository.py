@@ -1,6 +1,8 @@
 from typing import List, Dict
 from contextlib import contextmanager
 from uuid import UUID
+
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 import logging
@@ -109,3 +111,17 @@ class DialogRowRepository:
                     print("updating")
                 dialog_row.speaker_id = new_speaker_id
                 session.commit()
+
+    def update_loudness(self, row_id: UUID, loudness):
+        with self._get_session() as session:
+            update_query = text("""
+                UPDATE dialog_rows 
+                SET mean_loudness = :loudness 
+                WHERE id = :row_id
+            """)
+
+            session.execute(
+                update_query,
+                {'loudness': loudness, 'row_id': str(row_id)}
+            )
+            session.commit()
