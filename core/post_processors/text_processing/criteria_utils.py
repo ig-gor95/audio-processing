@@ -1,6 +1,8 @@
+import re
 from collections import defaultdict
 from functools import partial
 from multiprocessing import Pool, cpu_count
+from typing import Union, Sequence, Optional
 
 import numpy as np
 import pandas as pd
@@ -58,16 +60,30 @@ def find_phrases_in_df(normalized_texts, phrases, threshold=80):
         )
     )
 
-def _process_chunk(texts_chunk, min_name_length):
-    chunk_results = []
+
+def extract_valid_names_optimized(
+    texts: Union[pd.Series, Sequence[Optional[str]]],
+    min_name_length: int = 3
+) -> Union[pd.Series, list]:
+    """Ultra-optimized version with aggressive pre-screening.
+    Accepts a pandas Series or any sequence of strings. Returns a Series (if input is Series)
+    or a list (if input is a plain sequence)."""
+
+    # Init heavy objects once per call
     morph_vocab = MorphVocab()
     extractor = NamesExtractor(morph_vocab)
     morph_analyzer = pymorphy2.MorphAnalyzer()
-
-    # Local cache for this chunk
     name_cache = defaultdict(bool)
 
-    def is_valid_name(name):
+    # Pre-compile patterns for faster filtering
+    uppercase_pattern = re.compile(r'[A-ZА-ЯЁ]')
+    name_like_pattern = re.compile(
+        r'\b[A-ZА-ЯЁ][a-zа-яё]{%d,}\b' % max(min_name_length - 1, 0)
+    )
+
+    def is_valid_name(name: str) -> bool:
+        if not name:
+            return False
         if name in name_cache:
             return name_cache[name]
 
@@ -76,39 +92,39 @@ def _process_chunk(texts_chunk, min_name_length):
             return False
 
         parsed = morph_analyzer.parse(name)
-        name_cache[name] = any('Name' in p.tag or 'Surn' in p.tag for p in parsed)
+        # True if any parse has grammemes for first/last name
+        ok = any(('Name' in p.tag) or ('Surn' in p.tag) for p in parsed)
+        name_cache[name] = bool(ok)
         return name_cache[name]
 
-    for text in texts_chunk:
+    # Support both Series and plain sequences
+    is_series = isinstance(texts, pd.Series)
+    iterable = texts.values if is_series else texts
+
+    results = []
+    for text in iterable:
+        if not isinstance(text, str) or not text.strip():
+            results.append(None)
+            continue
+
+        # Ultra-fast pre-screening: skip if no uppercase letters at all
+        if not uppercase_pattern.search(text):
+            results.append(None)
+            continue
+
+        # Additional screening: check for name-like patterns
+        if not name_like_pattern.search(text):
+            results.append(None)
+            continue
+
         matches = extractor(text)
         valid_names = []
 
         for match in matches:
-            if match.fact.first is None:
-                continue
+            first = getattr(match.fact, 'first', None)
+            if first and is_valid_name(first):
+                valid_names.append(first)
 
-            name = match.fact.first
-            if is_valid_name(name):
-                valid_names.append(name)
+        results.append(', '.join(sorted(set(valid_names))) if valid_names else None)
 
-        chunk_results.append(', '.join(valid_names) if valid_names else None)
-
-    return chunk_results
-
-
-def extract_valid_names(texts, min_name_length=3, n_workers=None):
-    """Parallel name extraction with proper serialization."""
-    n_workers = n_workers or cpu_count()
-
-    text_values = texts.values
-    text_chunks = np.array_split(text_values, n_workers * 4)
-
-    worker = partial(_process_chunk, min_name_length=min_name_length)
-
-    with Pool(n_workers) as pool:
-        results = pool.map(worker, text_chunks)
-
-    return pd.Series(
-        [item for sublist in results for item in sublist],
-        index=texts.index
-    )
+    return pd.Series(results, index=texts.index) if is_series else results

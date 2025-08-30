@@ -13,6 +13,7 @@ from core.post_processors.text_processing.detector.inapropriate_phrases_detector
 from core.post_processors.text_processing.detector.interjections_detector import InterjectionsDetector
 from core.post_processors.text_processing.detector.non_professional_patterns_detector import NonProfessionalPatternsDetector
 from core.post_processors.text_processing.detector.order_detector import OrderPatternsDetector
+from core.post_processors.text_processing.detector.order_ru_bert_detector import OrderRuBertPatternsDetector
 from core.post_processors.text_processing.detector.parasites_detector import ParasitesDetector
 from core.post_processors.text_processing.detector.slang_detector import SlangDetector
 from core.post_processors.text_processing.detector.stop_words_detector import StopWordsDetector
@@ -37,7 +38,8 @@ class DialogueAnalyzer:
         self.abbreviations_detector = AbbreviationsDetector()
         self.inappropriate_phrases_detector = InappropriatePhrasesDetector()
         self.parasites_detector = ParasitesDetector()
-        self.order_pattern_detector = OrderPatternsDetector()
+        self.order_pattern_detector = OrderRuBertPatternsDetector()
+        # self.order_pattern_detector = OrderPatternsDetector()
         self.non_professional_patterns_detector = NonProfessionalPatternsDetector()
 
         # Initialize NLP tools

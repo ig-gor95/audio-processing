@@ -1,7 +1,3 @@
-from functools import partial
-
-import numpy as np
-from rapidfuzz import process, fuzz
 import pandas as pd
 import pymorphy3
 

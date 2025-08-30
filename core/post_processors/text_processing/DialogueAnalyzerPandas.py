@@ -6,16 +6,18 @@ import pymorphy2
 from natasha import MorphVocab, NewsEmbedding, NewsMorphTagger, Segmenter, NewsNERTagger
 from natasha import NamesExtractor
 from core.dto.criteria import CriteriaConfig
-from core.post_processors.text_processing.criteria_utils import find_phrases_in_df, extract_valid_names, \
-    normalize_text
+from core.post_processors.text_processing.criteria_utils import find_phrases_in_df, \
+    normalize_text, extract_valid_names_optimized
 from core.post_processors.text_processing.detector.abbreviations_detector import AbbreviationsDetector
 from core.post_processors.text_processing.detector.await_request_detector import AwaitRequestPatternsDetector
+from core.post_processors.text_processing.detector.await_request_exit_detector import AwaitRequestExitPatternsDetector
 from core.post_processors.text_processing.detector.diminuties_detector import DiminutivesDetector
 from core.post_processors.text_processing.detector.inapropriate_phrases_detector import InappropriatePhrasesDetector
 from core.post_processors.text_processing.detector.interjections_detector import InterjectionsDetector
 from core.post_processors.text_processing.detector.non_professional_patterns_detector import \
     NonProfessionalPatternsDetector
 from core.post_processors.text_processing.detector.order_detector import OrderPatternsDetector
+from core.post_processors.text_processing.detector.order_ru_bert_detector import OrderRuBertPatternsDetector
 from core.post_processors.text_processing.detector.parasites_detector import ParasitesDetector
 from core.post_processors.text_processing.detector.sales_detector import SalesDetector
 from core.post_processors.text_processing.detector.slang_detector import SlangDetector
@@ -39,12 +41,14 @@ class DialogueAnalyzerPandas:
         self.stop_words_detector = StopWordsDetector()
         self.interjections_detector = InterjectionsDetector()
         self.await_request_detector = AwaitRequestPatternsDetector()
+        self.await_request_exit_detector = AwaitRequestExitPatternsDetector()
         self.diminutives_detector = DiminutivesDetector()
         self.slang_detector = SlangDetector()
         self.abbreviations_detector = AbbreviationsDetector()
         self.inappropriate_phrases_detector = InappropriatePhrasesDetector()
         self.parasites_detector = ParasitesDetector()
-        self.order_pattern_detector = OrderPatternsDetector()
+        # self.order_pattern_detector = OrderPatternsDetector()
+        self.order_pattern_detector = OrderRuBertPatternsDetector()
         self.non_professional_patterns_detector = NonProfessionalPatternsDetector()
         self.sales_detector = SalesDetector()
 
@@ -161,6 +165,8 @@ class DialogueAnalyzerPandas:
         texts = unprocessed_rows_pd['row_text'].apply(normalize_text)
         unprocessed_rows_pd['await_requests'] = self.await_request_detector(texts)
         logger.info(f"Recognised await_requests")
+        unprocessed_rows_pd['await_requests_exit'] = self.await_request_exit_detector(texts)
+        logger.info(f"Recognised await_requests")
         unprocessed_rows_pd['farewell_phrase'] = find_phrases_in_df(texts, self.farewell_phrases)
         logger.info(f"Recognised farewell_phrase")
         unprocessed_rows_pd['telling_name_phrases'] = find_phrases_in_df(texts, self.telling_name_phrases)
@@ -193,7 +199,7 @@ class DialogueAnalyzerPandas:
         logger.info(f"Recognised order_resume")
         unprocessed_rows_pd['diminutives'] = self.diminutives_detector(texts)
         logger.info(f"Recognised diminutives")
-        unprocessed_rows_pd['found_name'] = extract_valid_names(texts)
+        unprocessed_rows_pd['found_name'] = extract_valid_names_optimized(texts)
         logger.info(f"Recognised found_name")
         unprocessed_rows_pd['dialog_criteria_id'] = [str(uuid.uuid4()) for _ in range(len(texts))]
         logger.info(f"Set up dialog_criteria_id")
@@ -206,6 +212,6 @@ class DialogueAnalyzerPandas:
             ['dialog_criteria_id', 'dialog_row_fk_id', 'greeting_phrase', 'found_name',
              'interjections', 'parasite_words', 'abbreviations', 'slang', 'telling_name_phrases',
              'inappropriate_phrases', 'diminutives', 'stop_words', 'swear_words', 'detected_speaker_id',
-             'non_professional_phrases', 'order_offer', 'order_processing', 'order_resume', 'await_requests']]
+             'non_professional_phrases', 'order_offer', 'order_processing', 'order_resume', 'await_requests', 'await_requests_exit']]
         logger.info(f"Saving results..")
         dialog_criteria_repository.save_pd(dialog_criteria_pd)
