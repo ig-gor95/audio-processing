@@ -48,10 +48,7 @@ if __name__ == "__main__":
     # dialog_rows_repository = DialogRowRepository()
     # audio_dialog_repository = AudioDialogRepository()
     # dialog_criteria_repository = DialogCriteriaRepository()
-
-    # rows = dialog_rows_repository.find_by_dialog_id(uuid.UUID('b6444029-efbd-4994-9f7b-3e07022fa386'))
-    # rows = dialog_rows_repository.find_all()
-
+    #
     # rows = dialog_rows_repository.find_rows_without_criteria()
     # total = len(rows)
     # count = 0
@@ -64,4 +61,4 @@ if __name__ == "__main__":
     # for dialog in dialogs:
     #     print_dialog_with_row_text(dialog.id, 'за ожидание')
 
-    print_dialog(uuid.UUID("50de1958-185c-461a-96e5-ddc5c6246f58"))
+    print_dialog(uuid.UUID("009fc88f-6252-434b-88dd-42b39b1eb4b4"))

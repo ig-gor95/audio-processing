@@ -60,9 +60,9 @@ if __name__ == "__main__":
     file_phrase_mapping = {}
 
     audio_dialog_repository = AudioDialogRepository()
-    audio_files = glob.glob(f"{Path.home()}/Documents/Аудио Бринекс/Brinex_in_2025_04/*.mp3")
+    audio_files = glob.glob(f"{Path.home()}/Documents/Аудио Бринекс/Brinex_in_2025_04/*.wav")
 
-    chunks = chunk_list(audio_files, 5000)
+    chunks = chunk_list(audio_files, 1000)
     for chunk in chunks:
         file_phrase_mapping = {}
         for audio_file in chunk:
