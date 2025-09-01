@@ -226,5 +226,7 @@ class DialogueAnalyzerPandas:
              'interjections', 'parasite_words', 'abbreviations', 'slang', 'telling_name_phrases',
              'inappropriate_phrases', 'diminutives', 'stop_words', 'swear_words', 'detected_speaker_id',
              'non_professional_phrases', 'order_offer', 'order_processing', 'order_resume', 'await_requests', 'await_requests_exit']]
+        dialog_criteria_pd['dialog_criteria_id'] = dialog_criteria_pd['dialog_criteria_id'].astype('object')
+        dialog_criteria_pd['dialog_row_fk_id'] = dialog_criteria_pd['dialog_row_fk_id'].astype('object')
         logger.info(f"Saving results..")
         dialog_criteria_repository.save_pd(dialog_criteria_pd)
