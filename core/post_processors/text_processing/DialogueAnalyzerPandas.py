@@ -14,8 +14,10 @@ from core.post_processors.text_processing.detector.await_request_exit_detector i
 from core.post_processors.text_processing.detector.diminuties_detector import DiminutivesDetector
 from core.post_processors.text_processing.detector.inapropriate_phrases_detector import InappropriatePhrasesDetector
 from core.post_processors.text_processing.detector.interjections_detector import InterjectionsDetector
+from core.post_processors.text_processing.detector.name_detector import NamePatternsDetector
 from core.post_processors.text_processing.detector.non_professional_patterns_detector import \
     NonProfessionalPatternsDetector
+from core.post_processors.text_processing.detector.ongoing_sale_detector import OngoingSalePatternsDetector
 from core.post_processors.text_processing.detector.order_detector import OrderPatternsDetector
 from core.post_processors.text_processing.detector.order_ru_bert_detector import OrderRuBertPatternsDetector
 from core.post_processors.text_processing.detector.parasites_detector import ParasitesDetector
@@ -23,6 +25,7 @@ from core.post_processors.text_processing.detector.sales_detector import SalesDe
 from core.post_processors.text_processing.detector.slang_detector import SlangDetector
 from core.post_processors.text_processing.detector.stop_words_detector import StopWordsDetector
 from core.post_processors.text_processing.detector.swear_detector import SwearDetector
+from core.post_processors.text_processing.detector.working_hours_detector import WorkingHoursPatternsDetector
 from core.repository.dialog_criteria_repository import DialogCriteriaRepository
 from log_utils import setup_logger
 from yaml_reader import ConfigLoader
@@ -51,6 +54,9 @@ class DialogueAnalyzerPandas:
         self.order_pattern_detector = OrderRuBertPatternsDetector()
         self.non_professional_patterns_detector = NonProfessionalPatternsDetector()
         self.sales_detector = SalesDetector()
+        self.ongoing_sale_detector = OngoingSalePatternsDetector()
+        self.working_hours_detector = WorkingHoursPatternsDetector()
+        self.name_detector = NamePatternsDetector()
 
         # Initialize NLP tools
         self.morph_vocab = MorphVocab()
@@ -164,10 +170,16 @@ class DialogueAnalyzerPandas:
         logger.info(f"Retrieved {len(unprocessed_rows_pd)} dialogue rows")
         texts = unprocessed_rows_pd['row_text']
         normilized_texts = texts.apply(normalize_text)
-        unprocessed_rows_pd['found_name'] = extract_valid_names_optimized(texts)
+        # unprocessed_rows_pd['found_name'] = extract_valid_names_optimized(texts)
+        # logger.info(f"Recognised found_name")
+        unprocessed_rows_pd['found_name'] = self.name_detector(normilized_texts)
         logger.info(f"Recognised found_name")
         unprocessed_rows_pd['await_requests'] = self.await_request_detector(normilized_texts)
         logger.info(f"Recognised await_requests")
+        unprocessed_rows_pd['ongoing_sale'] = self.ongoing_sale_detector(normilized_texts)
+        logger.info(f"Recognised ongoing_sale")
+        unprocessed_rows_pd['working_hours'] = self.working_hours_detector(normilized_texts)
+        logger.info(f"Recognised working_hours")
         unprocessed_rows_pd['await_requests_exit'] = self.await_request_exit_detector(normilized_texts)
         logger.info(f"Recognised await_requests")
         unprocessed_rows_pd['farewell_phrase'] = find_phrases_in_df(normilized_texts, self.farewell_phrases)
@@ -210,7 +222,7 @@ class DialogueAnalyzerPandas:
         logger.info(f"Update client between await and greeting")
         unprocessed_rows_pd = self.update_client_between_await_and_greeting(unprocessed_rows_pd)
         dialog_criteria_pd = unprocessed_rows_pd[
-            ['dialog_criteria_id', 'dialog_row_fk_id', 'greeting_phrase', 'found_name',
+            ['dialog_criteria_id', 'dialog_row_fk_id', 'greeting_phrase', 'found_name', 'ongoing_sale', 'working_hours',
              'interjections', 'parasite_words', 'abbreviations', 'slang', 'telling_name_phrases',
              'inappropriate_phrases', 'diminutives', 'stop_words', 'swear_words', 'detected_speaker_id',
              'non_professional_phrases', 'order_offer', 'order_processing', 'order_resume', 'await_requests', 'await_requests_exit']]

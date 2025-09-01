@@ -25,7 +25,7 @@ class DialogCriteriaRepository:
         df.to_sql(
             'dialog_criterias',
             self.engine,
-            if_exists='append',
+            if_exists='replace',
             index=False
         )
 
@@ -33,9 +33,7 @@ class DialogCriteriaRepository:
         return pd.read_sql(f"""
                     SELECT row.*
                     from dialog_rows row
-                    left join dialog_criterias crit on crit.dialog_row_fk_id = row.id
-                    where crit.dialog_criteria_id is null
-                    and row.row_text is not null and row.row_text != ' ' and row.row_text != ''
+                    where row.row_text is not null and row.row_text != ' ' and row.row_text != ''
                 """, self.engine)
 
     def save_bulk(self, dialog_rows: List[DialogCriteria]) -> None:
