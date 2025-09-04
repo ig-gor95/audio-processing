@@ -71,9 +71,12 @@ def run_pipeline(audio_file: Path):
         logger.info(f"Cleaning dialog {audio_file.name}")
         file_uuid = existing_dialog.id
 
-    elif existing_dialog.status == AudioDialogStatus.PROCESSED:
-        return
+    # elif existing_dialog.status == AudioDialogStatus.PROCESSED:
+    #     return
     else:
+        rows = dialog_row_repository.find_by_dialog_id(existing_dialog.id)
+        for row in rows:
+            dialog_criteria_repository.delete_by_dialog_row_fk_id(row.id)
         dialog_row_repository.delete_all_by_dialog_id(existing_dialog.id)
         file_uuid = existing_dialog.id
 
@@ -127,10 +130,11 @@ def process_files_parallel(audio_files: List[Path], max_workers: int = 3, max_fi
 
 if __name__ == "__main__":
     # print_dialog(uuid.UUID("247699f2-5337-40b3-b6a8-4c3b14449fa8"))
-    folder_path = f"{Path.home()}/Documents/Аудио Бринекс/1/"
-    audio_file = Path(folder_path)
-    process_files_parallel([audio_file], max_files=5000)
+    # folder_path = f"{Path.home()}/Documents/Аудио Бринекс/Brinex_in_2025_04/in-07010101-89384864072-20250402-113058-1743582658.20978046.mp3"
+    # audio_file = Path(folder_path)
+    # process_files_parallel([audio_file], max_files=5000)
 
-    audio_files = list(Path(folder_path).glob("*"))
-    print(f' Total: {len(audio_files)}')
-    process_files_parallel(audio_files, max_files=5000)
+    print_dialog(uuid.UUID('009fc88f-6252-434b-88dd-42b39b1eb4b4'))
+    # audio_files = list(Path(folder_path).glob("*"))
+    # print(f' Total: {len(audio_files)}')
+    # process_files_parallel(audio_files, max_files=5000)
