@@ -29,6 +29,6 @@ class NamePatternsDetector:
         return '|'.join(escaped_patterns)
 
     def __call__(self, texts: pd.DataFrame) -> pd.Series:
-        matches = texts.str.contains(self._combined_pattern, case=False, na=False, regex=True)
+        matches = texts.str.extract(f'({self._combined_pattern})', expand=False, flags=re.IGNORECASE)
 
-        return matches.astype(int)
+        return matches.fillna('')
