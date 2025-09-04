@@ -25,14 +25,15 @@ class DialogCriteriaRepository:
         df.to_sql(
             'dialog_criterias',
             self.engine,
-            if_exists='replace',
+            if_exists='append',
             index=False
         )
 
     def pd_get_all_unprocessed_rows(self) -> pd.DataFrame:
         return pd.read_sql(f"""
-                    SELECT row.*
+                    SELECT row.*, crit.*
                     from dialog_rows row
+                    left join dialog_criterias crit on crit.dialog_row_fk_id = row.id 
                     where row.row_text is not null and row.row_text != ' ' and row.row_text != ''
                 """, self.engine)
 

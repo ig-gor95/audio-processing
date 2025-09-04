@@ -11,6 +11,7 @@ from core.post_processors.text_processing.criteria_utils import find_phrases_in_
 from core.post_processors.text_processing.detector.abbreviations_detector import AbbreviationsDetector
 from core.post_processors.text_processing.detector.await_request_detector import AwaitRequestPatternsDetector
 from core.post_processors.text_processing.detector.await_request_exit_detector import AwaitRequestExitPatternsDetector
+from core.post_processors.text_processing.detector.axis_attention_detector import AxisAttentionPatternsDetector
 from core.post_processors.text_processing.detector.diminuties_detector import DiminutivesDetector
 from core.post_processors.text_processing.detector.inapropriate_phrases_detector import InappropriatePhrasesDetector
 from core.post_processors.text_processing.detector.interjections_detector import InterjectionsDetector
@@ -57,6 +58,7 @@ class DialogueAnalyzerPandas:
         self.ongoing_sale_detector = OngoingSalePatternsDetector()
         self.working_hours_detector = WorkingHoursPatternsDetector()
         self.name_detector = NamePatternsDetector()
+        self.axis_attention_detector = AxisAttentionPatternsDetector()
 
         # Initialize NLP tools
         self.morph_vocab = MorphVocab()
@@ -176,6 +178,8 @@ class DialogueAnalyzerPandas:
         logger.info(f"Recognised found_name")
         unprocessed_rows_pd['await_requests'] = self.await_request_detector(normilized_texts)
         logger.info(f"Recognised await_requests")
+        unprocessed_rows_pd['axis_attention'] = self.axis_attention_detector(normilized_texts)
+        logger.info(f"Recognised axis_attention")
         unprocessed_rows_pd['ongoing_sale'] = self.ongoing_sale_detector(normilized_texts)
         logger.info(f"Recognised ongoing_sale")
         unprocessed_rows_pd['working_hours'] = self.working_hours_detector(normilized_texts)
@@ -223,10 +227,9 @@ class DialogueAnalyzerPandas:
         unprocessed_rows_pd = self.update_client_between_await_and_greeting(unprocessed_rows_pd)
         dialog_criteria_pd = unprocessed_rows_pd[
             ['dialog_criteria_id', 'dialog_row_fk_id', 'greeting_phrase', 'found_name', 'ongoing_sale', 'working_hours',
-             'interjections', 'parasite_words', 'abbreviations', 'slang', 'telling_name_phrases',
+             'interjections', 'parasite_words', 'abbreviations', 'slang', 'telling_name_phrases', 'axis_attention',
              'inappropriate_phrases', 'diminutives', 'stop_words', 'swear_words', 'detected_speaker_id',
              'non_professional_phrases', 'order_offer', 'order_processing', 'order_resume', 'await_requests', 'await_requests_exit']]
-        dialog_criteria_pd['dialog_criteria_id'] = dialog_criteria_pd['dialog_criteria_id'].astype('object')
-        dialog_criteria_pd['dialog_row_fk_id'] = dialog_criteria_pd['dialog_row_fk_id'].astype('object')
+
         logger.info(f"Saving results..")
         dialog_criteria_repository.save_pd(dialog_criteria_pd)
