@@ -5,6 +5,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import List
+
+import numpy as np
 import soundfile as sf
 
 from core.audio_to_text.audio_to_text_processor import audio_to_text_processor
@@ -46,6 +48,89 @@ def get_duration(audio_file: Path) -> float:
         with print_lock:
             print(f"Error in {audio_file.name}: {str(e)}")
         return 0.0
+
+def make_overlapping_windows(segments, win=0.9, hop=0.25, min_len=0.8):
+    """Генерим перекрывающиеся окна фиксированной длины. Окон < min_len не создаём."""
+    out = []
+    win = float(win); hop = float(hop); min_len = float(min_len)
+    for seg in segments:
+        s, e = float(seg['start']), float(seg['end'])
+        dur = e - s
+        if dur < min_len - 1e-6:
+            continue
+        if dur <= win + 1e-6:
+            out.append({'start': s, 'end': e})
+            continue
+        t = s
+        while t + win <= e + 1e-9:
+            out.append({'start': t, 'end': min(t + win, e)})
+            t += hop
+    return out
+
+def merge_labeled_windows(windows, labels, max_gap=0.15, min_len=0.8):
+    """Склеиваем подряд идущие окна одного спикера, фильтруем коротыши."""
+    if not windows or len(windows) != len(labels):
+        return [], np.array([], dtype=int)
+    items = sorted(
+        [{'start': float(w['start']), 'end': float(w['end']), 'lab': int(l)}
+         for w, l in zip(windows, labels)],
+        key=lambda z: (z['start'], z['end'])
+    )
+    merged = [{'start': items[0]['start'], 'end': items[0]['end'], 'lab': items[0]['lab']}]
+    for it in items[1:]:
+        cur = merged[-1]
+        if it['lab'] == cur['lab'] and (it['start'] - cur['end']) <= max_gap + 1e-9:
+            cur['end'] = max(cur['end'], it['end'])
+        else:
+            merged.append({'start': it['start'], 'end': it['end'], 'lab': it['lab']})
+    keep = [m for m in merged if (m['end'] - m['start']) >= (min_len - 1e-6)]
+    if not keep:
+        return [], np.array([], dtype=int)
+    segs = [{'start': k['start'], 'end': k['end']} for k in keep]
+    labs = np.array([k['lab'] for k in keep], dtype=int)
+    return segs, labs
+
+def viterbi_labels_by_centroids(X: np.ndarray, labels_init: np.ndarray, n_clusters: int, switch_penalty: float = 0.18) -> np.ndarray:
+    """
+    Уточняет последовательность меток по косинусной близости к центроидам с умеренным штрафом за переключение.
+    X: [N, d] L2-нормализованные эмбеддинги окон (как у тебя после l2norm_rows)
+    labels_init: начальные метки окон (после кластеризации)
+    n_clusters: число кластеров (2)
+    switch_penalty: штраф за смену спикера между соседними окнами (0.15–0.25 обычно ок)
+    """
+    # 1) центроиды по начальным меткам
+    C = []
+    for k in range(n_clusters):
+        idx = np.where(labels_init == k)[0]
+        if len(idx) == 0:
+            # если кластер пуст — возьмём самый "дальний" от другого (редко, но бывает)
+            idx = np.array([np.argmax(np.linalg.norm(X - X.mean(0, keepdims=True), axis=1))])
+        c = X[idx].mean(0)
+        c /= (np.linalg.norm(c) + 1e-12)
+        C.append(c)
+    C = np.stack(C, axis=0)  # [K, d]
+
+    # 2) эмиссионные стоимости = -cosine_similarity (чем меньше — тем лучше)
+    sims = X @ C.T                           # [N, K], т.к. X и C уже L2-нормированы
+    cost = -sims                             # минимизируем
+
+    N, K = cost.shape
+    dp = np.zeros((N, K), dtype=np.float32)
+    bk = np.zeros((N, K), dtype=np.int32)
+    dp[0] = cost[0]
+
+    # 3) динамика с штрафом за переключения
+    for i in range(1, N):
+        prev = dp[i-1][:, None] + switch_penalty * (1.0 - np.eye(K, dtype=np.float32))
+        bk[i] = prev.argmin(axis=0)
+        dp[i] = cost[i] + prev.min(axis=0)
+
+    # 4) обратный проход
+    y = np.zeros(N, dtype=np.int32)
+    y[-1] = dp[-1].argmin()
+    for i in range(N - 2, -1, -1):
+        y[i] = bk[i + 1, y[i + 1]]
+    return y
 
 
 def run_pipeline(audio_file: Path):
@@ -103,7 +188,7 @@ def run_pipeline(audio_file: Path):
     audio_dialog_repository.update_status(file_uuid, AudioDialogStatus.PROCESSED, execution_time)
 
 
-def process_files_parallel(audio_files: List[Path], max_workers: int = 3, max_files: int = 200):
+def process_files_parallel(audio_files: List[Path], max_workers: int = 1, max_files: int = 200):
     """Process files in parallel with progress tracking"""
     start_time = time.time()
     processed_count = 0
@@ -130,11 +215,11 @@ def process_files_parallel(audio_files: List[Path], max_workers: int = 3, max_fi
 
 if __name__ == "__main__":
     # print_dialog(uuid.UUID("247699f2-5337-40b3-b6a8-4c3b14449fa8"))
-    # folder_path = f"{Path.home()}/Documents/Аудио Бринекс/Brinex_in_2025_04/in-07010101-89384864072-20250402-113058-1743582658.20978046.mp3"
+    folder_path = f"{Path.home()}/Documents/Аудио Бринекс/asd"
     # audio_file = Path(folder_path)
     # process_files_parallel([audio_file], max_files=5000)
 
-    print_dialog(uuid.UUID('009fc88f-6252-434b-88dd-42b39b1eb4b4'))
-    # audio_files = list(Path(folder_path).glob("*"))
-    # print(f' Total: {len(audio_files)}')
-    # process_files_parallel(audio_files, max_files=5000)
+    # print_dialog(uuid.UUID('009fc88f-6252-434b-88dd-42b39b1eb4b4'))
+    audio_files = list(Path(folder_path).glob("*"))[:1]
+    print(f' Total: {len(audio_files)}')
+    process_files_parallel(audio_files, max_files=5000)
