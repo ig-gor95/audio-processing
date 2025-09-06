@@ -215,11 +215,13 @@ def process_files_parallel(audio_files: List[Path], max_workers: int = 3, max_fi
 
 if __name__ == "__main__":
     # print_dialog(uuid.UUID("247699f2-5337-40b3-b6a8-4c3b14449fa8"))
-    folder_path = f"{Path.home()}/Documents/Аудио Бринекс/asd/"
-    # audio_file = Path(folder_path)
-    # process_files_parallel([audio_file], max_files=5000)
+    folder_path = f"{Path.home()}/Documents/Аудио Бринекс/Brinex_in_2025_04/in-07010101-83412933199-20250402-111618-1743581778.20974393.mp3"
+    # folder_path2 = f"{Path.home()}/Documents/Аудио Бринекс/Brinex_in_2025_04/in-07010101-89384864072-20250402-113058-1743582658.20978046.mp3"
+    audio_file = Path(folder_path)
+    # audio_file2 = Path(folder_path2)
+    process_files_parallel([audio_file], max_files=5000)
 
     # print_dialog(uuid.UUID('009fc88f-6252-434b-88dd-42b39b1eb4b4'))
-    audio_files = list(Path(folder_path).glob("*"))[3:7]
-    print(f' Total: {len(audio_files)}')
-    process_files_parallel(audio_files, max_files=5000)
+    # audio_files = list(Path(folder_path).glob("*"))[3:7]
+    # print(f' Total: {len(audio_files)}')
+    # process_files_parallel(audio_files, max_files=5000)

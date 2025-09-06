@@ -10,7 +10,7 @@ from yaml_reader import ConfigLoader
 class SalesDetector:
     def __init__(self, config_path: str = "post_processors/config/sales_patterns.yaml"):
         self._config = ConfigLoader(config_path).get("patterns")
-        self._threshold = 90
+        self._threshold = 97
         self._patterns = [pattern.lower() for pattern in self._config]
 
     def __call__(self, dialog_rows: List[DialogRow]):
