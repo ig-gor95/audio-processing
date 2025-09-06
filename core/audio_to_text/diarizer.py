@@ -23,25 +23,32 @@ MAX_SPEAKERS  = int(config.get('diarize.max_speakers', 2))
 FORCE_TWO     = bool(config.get('diarize.force_two', True))
 BATCH         = int(config.get('diarize.batch_size', 64))
 
-# окно/шаг для эмбеддингов (перекрытие ≈ 75%/50%)
-WIN_SEC       = float(config.get('diarize.win_sec', 1.2))
-HOP_SEC       = float(config.get('diarize.hop_sec', 0.30))  # тоньше сетка
+# окно/шаг для эмбеддингов (повышаем разрешение по времени)
+WIN_SEC       = float(config.get('diarize.win_sec', 1.0))
+HOP_SEC       = float(config.get('diarize.hop_sec', 0.30))
 
 # порог склейки соседних окон одного спикера, мин. длительность фин. сегмента
 MERGE_GAP     = float(config.get('diarize.merge_gap', 0.15))
-MIN_KEEP      = float(config.get('diarize.min_keep', 1.1))
+MIN_KEEP      = float(config.get('diarize.min_keep', 1.0))
 
-# сглаживание меток и минимальный «заход» (не переливаем через VAD-границы)
+# сглаживание меток и минимальный «заход»
 MEDIAN_K      = int(config.get('diarize.median_k', 3))
-MIN_DWELL     = float(config.get('diarize.min_dwell', 1.4))
+MIN_DWELL     = float(config.get('diarize.min_dwell', 1.0))
 
-# округление таймингов — безопасное (ceil start, floor end)
-ROUND_Q       = float(config.get('diarize.round_q', 0.10))
+# округление таймингов — мягкое (мелкий шаг, расширяющее)
+ROUND_Q       = float(config.get('diarize.round_q', 0.05))
 
-# порог уверенности для запрета лишних переключений (margin)
-TAU_MARGIN    = float(config.get('diarize.tau_margin', 0.025))
-# штраф Viterbi за переключение (чем больше — тем реже переключаемся)
-SWITCH_PENALTY = float(config.get('diarize.switch_penalty', 0.20))
+# Viterbi/маржин
+TAU_MARGIN      = float(config.get('diarize.tau_margin', 0.025))
+SWITCH_PENALTY  = float(config.get('diarize.switch_penalty', 0.20))
+
+# смещение разреза в сторону правого сегмента, чтобы не резать хвост левого
+CUT_BIAS        = float(config.get('diarize.cut_bias', 0.04))  # сек
+
+# НОВОЕ: принудительные разрезы внутри длинных «однолейбловых» участков
+TAU_STRONG        = float(config.get('diarize.tau_strong', 0.12))   # насколько уверенно выигрывает другой спикер
+HOLD_STRONG_SEC   = float(config.get('diarize.hold_strong_sec', 0.6))# минимум длительности такого выигрыша
+HYSTERESIS        = float(config.get('diarize.hysteresis', 0.02))    # чтобы не «пилить» границу
 
 if torch.backends.mps.is_available():
     DEVICE = torch.device("mps")
@@ -85,49 +92,51 @@ def l2norm_rows(X: np.ndarray) -> np.ndarray:
     n = np.linalg.norm(X, axis=1, keepdims=True) + 1e-12
     return X / n
 
-def pad_segments_for_asr(segs, pad_left=0.08, pad_right=0.12, total_dur: float | None = None):
+def round_segments_expand(segs, q: float = ROUND_Q, total_dur: float | None = None):
     """
-    Чуть расширяем сегменты для ASR, но НЕ пересекаем соседей.
+    Расширяющее округление: start -> floor(q), end -> ceil(q); перекрытия отдаём правому старту.
+    """
+    if not segs:
+        return segs
+    r = []
+    for s in segs:
+        a = max(0.0, math.floor(float(s['start']) / q) * q)
+        b = math.ceil(float(s['end']) / q) * q
+        if total_dur is not None:
+            b = min(b, total_dur)
+        r.append({'start': a, 'end': max(a, b)})
+    r.sort(key=lambda z: z['start'])
+    for i in range(1, len(r)):
+        if r[i]['start'] < r[i-1]['end'] - 1e-9:
+            r[i]['start'] = r[i-1]['end']
+        if r[i]['end'] < r[i]['start']:
+            r[i]['end'] = r[i]['start']
+    return r
+
+def pad_segments_for_asr(segs, pad_left=0.12, pad_right=0.18, total_dur: float | None = None):
+    """
+    «Подушка» до/после сегмента без налезания на соседей.
     """
     if not segs:
         return segs
     out = []
     for i, s in enumerate(segs):
-        a = max(0.0, s['start'] - pad_left)
+        a = s['start'] - pad_left
         b = s['end'] + pad_right
         if i > 0:
-            a = max(a, segs[i-1]['end'])           # не залезаем в соседа слева
+            a = max(a, segs[i-1]['end'])
+        a = max(0.0, a)
+        if total_dur is not None:
+            b = min(b, total_dur)
         if i < len(segs) - 1:
-            b = min(b, segs[i+1]['start'])         # и в соседа справа
-        if total_dur is not None:
-            b = min(b, total_dur)
-        out.append({'start': a, 'end': max(a, b)})
-    return out
-
-# безопасное округление: start — ceil к шагу q, end — floor к шагу q
-def round_segments_safe(segs, q: float = ROUND_Q, total_dur: float | None = None):
-    if not segs:
-        return segs
-    out = []
-    prev_end = 0.0
-    for s in segs:
-        raw_a, raw_b = float(s['start']), float(s['end'])
-        a = max(prev_end, math.ceil(raw_a / q) * q)
-        b = math.floor(raw_b / q) * q
-        if total_dur is not None:
-            b = min(b, total_dur)
-        if b < a:  # не даём наложиться/уйти в отрицательную длительность
-            b = a
-        out.append({'start': a, 'end': b})
-        prev_end = b
+            b = min(b, segs[i+1]['start'])
+        out.append({'start': max(a, s['start']), 'end': max(max(a, s['start']), b)})
     return out
 
 # ================= Windowing =================
 def windows_over_segments(vad_segments, win_sec=WIN_SEC, hop_sec=HOP_SEC, min_len=MIN_KEEP):
     """
-    Делаем фиксированные окна внутри каждого VAD-сегмента.
-    НЕ создаём окна короче min_len. К каждому окну прикрепляем 'vad_id',
-    чтобы позже не склеивать через паузы.
+    Фиксированные окна внутри каждого VAD-сегмента; храним vad_id.
     """
     out = []
     for idx, seg in enumerate(vad_segments):
@@ -146,7 +155,6 @@ def windows_over_segments(vad_segments, win_sec=WIN_SEC, hop_sec=HOP_SEC, min_le
 
 # ================= Label helpers =================
 def median_filter_labels(labels: np.ndarray, k=MEDIAN_K) -> np.ndarray:
-    """Медианный фильтр по окнам (мягкое удаление выбросов)."""
     if k <= 1 or len(labels) == 0:
         return labels
     k = int(k) if k % 2 == 1 else int(k) + 1
@@ -215,8 +223,7 @@ def enforce_min_dwell_group(labels_g: np.ndarray, windows_g: list, min_dwell=MIN
             break
         for idx, (lab, a, b) in enumerate(runs):
             st = float(windows_g[a]['start']); en = float(windows_g[b]['end'])
-            dur = en - st
-            if dur >= (min_dwell - 1e-6):
+            if (en - st) >= (min_dwell - 1e-6):
                 continue
             # переливаем к соседу с большей длительностью
             left_dur = -1.0
@@ -236,9 +243,9 @@ def enforce_min_dwell_group(labels_g: np.ndarray, windows_g: list, min_dwell=MIN
 
 def refine_by_viterbi_and_margin(windows: list, X: np.ndarray, labels_init: np.ndarray,
                                  n_clusters: int, switch_penalty: float = SWITCH_PENALTY,
-                                 min_dwell: float = MIN_DWELL, tau: float = TAU_MARGIN) -> np.ndarray:
+                                 min_dwell: float = MIN_DWELL, tau: float = TAU_MARGIN) -> tuple[np.ndarray, np.ndarray]:
     """
-    Для каждого VAD-сегмента: Viterbi-сглаживание, затем margin-правило, затем min_dwell.
+    Возвращает (labels, sims), где sims = X @ C^T (L2-нормированные косинусные похожести).
     """
     C = centroids_from_labels(X, labels_init, n_clusters)
     sims = X @ C.T                     # [N,K], X и C — L2-норм
@@ -260,8 +267,7 @@ def refine_by_viterbi_and_margin(windows: list, X: np.ndarray, labels_init: np.n
         g_y = viterbi_group(g_cost, penalty=switch_penalty)
 
         # margin: если уверенность мала — не переключаемся
-        # margin = max_sim - second_max_sim
-        top2 = np.partition(g_sims, -2, axis=1)[:, -2:]   # два наибольших
+        top2 = np.partition(g_sims, -2, axis=1)[:, -2:]
         top2_sorted = np.sort(top2, axis=1)
         margins = top2_sorted[:, 1] - top2_sorted[:, 0]
         for j in range(1, len(idxs)):
@@ -273,21 +279,100 @@ def refine_by_viterbi_and_margin(windows: list, X: np.ndarray, labels_init: np.n
         g_y = enforce_min_dwell_group(g_y, sub_windows, min_dwell=min_dwell)
 
         y[idxs] = g_y
+    return y, sims
+
+# НОВОЕ: принудительные разрезы внутри длинных участков одного лейбла
+def force_splits_by_strong_opposition(
+    windows: list,
+    labels: np.ndarray,
+    sims: np.ndarray,
+    hop_sec: float = HOP_SEC,
+    tau_strong: float = TAU_STRONG,
+    hold_strong_sec: float = HOLD_STRONG_SEC,
+    hysteresis: float = HYSTERESIS
+) -> np.ndarray:
+    """
+    Если внутри длинного «монолитного» участка меток обнаружен непрерывный блок окон,
+    где другой спикер уверенно (>= tau_strong) выигрывает Top-1, и длительность блока >= hold_strong_sec,
+    то принудительно меняем метку в этом блоке (вставляя переключение спикеров).
+    """
+    y = labels.copy()
+    K = sims.shape[1]
+    if K < 2 or len(y) == 0:
+        return y
+
+    need = max(1, int(round(hold_strong_sec / max(1e-6, hop_sec))))
+
+    # пробегаем непрерывные ран-ы одинаковой метки
+    i = 0
+    N = len(y)
+    while i < N:
+        j = i
+        while j + 1 < N and y[j + 1] == y[i]:
+            j += 1
+        # ран: [i..j], текущая метка c
+        c = y[i]
+        # для K=2 альтернативная метка — 1-c, для K>2 — argmax по k!=c
+        alt = None
+        if K == 2:
+            alt = 1 - c
+
+        # строим булев массив «сильно за другого»
+        strong = []
+        for t in range(i, j + 1):
+            # current score = sims[t, c]; best other = max_k!=c sims[t,k]
+            if K == 2:
+                best_other = sims[t, alt]
+            else:
+                best_other = np.max(np.concatenate([sims[t, :c], sims[t, c+1:]], axis=0))
+                alt = int(np.argmax(np.concatenate([sims[t, :c], sims[t, c+1:]], axis=0)))
+            margin = best_other - sims[t, c]
+            strong.append(margin >= tau_strong)
+        strong = np.array(strong, dtype=bool)
+
+        # ищем длинные непрерывные блоки strong==True
+        t0 = i
+        k = i
+        while k <= j:
+            if not strong[k - i]:
+                k += 1
+                continue
+            # найден старт блока
+            b = k
+            while k <= j and strong[k - i]:
+                k += 1
+            e = k - 1
+            if (e - b + 1) >= need:
+                # расширим за счёт гистерезиса — окна, где альтернативный спикер почти выигрывает
+                bb = b
+                while bb - 1 >= i:
+                    margin_prev = (sims[bb - 1, alt] - sims[bb - 1, c])
+                    if margin_prev >= (tau_strong - hysteresis):
+                        bb -= 1
+                    else:
+                        break
+                ee = e
+                while ee + 1 <= j:
+                    margin_next = (sims[ee + 1, alt] - sims[ee + 1, c])
+                    if margin_next >= (tau_strong - hysteresis):
+                        ee += 1
+                    else:
+                        break
+                # меняем метку внутри [bb..ee] на альтернативную
+                y[bb:ee + 1] = alt
+            # продолжаем поиск после e
+        i = j + 1
+
     return y
 
-# ================= Локализация границ и склейка =================
+# ================= Точная локализация границ и склейка =================
 def segments_from_labeled_windows(
     windows: list,
     labels: np.ndarray,
     max_gap: float = MERGE_GAP,
-    min_len: float = MIN_KEEP
+    min_len: float = MIN_KEEP,
+    cut_bias: float = CUT_BIAS
 ):
-    """
-    Собираем финальные сегменты.
-    Если метка меняется (и это тот же vad_id), границу ставим в точке,
-    равной середине между центрами двух стыкующихся окон.
-    Через паузы (разные vad_id) не склеиваем.
-    """
     if not windows or len(windows) != len(labels):
         return [], np.array([], dtype=int)
 
@@ -317,10 +402,9 @@ def segments_from_labeled_windows(
             continue
 
         if same_vad and (not same_lab) and close_enough:
-            # смена спикера внутри одной VAD-группы — разрез между центрами
             cur_mid = 0.5 * (cur['start'] + cur['end'])
-            cut = 0.5 * (cur_mid + it['mid'])
-            cut = max(cur['start'], min(cut, it['end']))
+            cut = 0.5 * (cur_mid + it['mid']) + cut_bias
+            cut = min(max(cut, cur['start']), it['end'])
             cut = max(min(cut, it['start']), min(cur['end'], cut))
             segs.append({'start': cur['start'], 'end': cut, 'lab': cur['lab']})
             cur = {'start': cut, 'end': it['end'], 'lab': it['lab'], 'vad_id': it['vad_id']}
@@ -331,38 +415,13 @@ def segments_from_labeled_windows(
 
     segs.append({'start': cur['start'], 'end': cur['end'], 'lab': cur['lab']})
 
-    # фильтрация коротких: вливаем к более длинному соседу той же метки, если рядом
-    if not segs:
+    # фильтрация коротышей (оставляем только >= min_len)
+    keep = [s for s in segs if (s['end'] - s['start']) >= (min_len - 1e-6)]
+    if not keep:
         return [], np.array([], dtype=int)
 
-    cleaned = []
-    for i, s in enumerate(segs):
-        dur = s['end'] - s['start']
-        if dur + 1e-9 >= min_len:
-            cleaned.append(s)
-            continue
-
-        left_ok = (i - 1 >= 0) and (segs[i-1]['lab'] == s['lab'])
-        right_ok = (i + 1 < len(segs)) and (segs[i+1]['lab'] == s['lab'])
-        if left_ok and right_ok:
-            left_d  = segs[i-1]['end'] - segs[i-1]['start']
-            right_d = segs[i+1]['end'] - segs[i+1]['start']
-            if left_d >= right_d:
-                cleaned[-1]['end'] = max(cleaned[-1]['end'], s['end'])
-            else:
-                segs[i+1]['start'] = min(segs[i+1]['start'], s['start'])
-        elif left_ok:
-            cleaned[-1]['end'] = max(cleaned[-1]['end'], s['end'])
-        elif right_ok:
-            segs[i+1]['start'] = min(segs[i+1]['start'], s['start'])
-        # иначе — пропускаем (короткий одиночный разрыв останется удалённым)
-
-    cleaned.sort(key=lambda z: z['start'])
-    if not cleaned:
-        return [], np.array([], dtype=int)
-
-    out = [cleaned[0]]
-    for s in cleaned[1:]:
+    out = [keep[0]]
+    for s in keep[1:]:
         if s['lab'] == out[-1]['lab'] and (s['start'] - out[-1]['end']) <= max_gap + 1e-9:
             out[-1]['end'] = max(out[-1]['end'], s['end'])
         else:
@@ -513,29 +572,33 @@ def diarize(file_path: Path) -> DiarizedResult:
         logger.error(f"Clustering failed: {e}")
         return DiarizedResult([], np.array([]))
 
-    # 6) Viterbi + margin + min_dwell по каждому VAD-сегменту
-    labels = refine_by_viterbi_and_margin(
+    # 6) Viterbi + margin + min_dwell
+    labels_refined, sims = refine_by_viterbi_and_margin(
         kept_windows, X, labels0, n_clusters,
         switch_penalty=SWITCH_PENALTY, min_dwell=MIN_DWELL, tau=TAU_MARGIN
     )
 
-    # 7) мягкое медианное сглаживание
-    labels = median_filter_labels(labels, k=MEDIAN_K)
+    # 7) медианное сглаживание
+    labels_refined = median_filter_labels(labels_refined, k=MEDIAN_K)
 
-    # 8) точная локализация границ + финальное склеивание
+    # 8) НОВОЕ: «спасательные» принудительные разрезы внутри монолитов
+    labels_refined = force_splits_by_strong_opposition(
+        kept_windows, labels_refined, sims,
+        hop_sec=HOP_SEC, tau_strong=TAU_STRONG, hold_strong_sec=HOLD_STRONG_SEC, hysteresis=HYSTERESIS
+    )
+
+    # 9) точная локализация границ + финальное склеивание
     final_segments, final_labels = segments_from_labeled_windows(
-        kept_windows, labels, max_gap=MERGE_GAP, min_len=MIN_KEEP
+        kept_windows, labels_refined, max_gap=MERGE_GAP, min_len=MIN_KEEP, cut_bias=CUT_BIAS
     )
     if len(final_segments) == 0:
         logger.warning("No segments after boundary localization")
         return DiarizedResult([], np.array([]))
 
-    # 9) безопасное округление таймингов
+    # 10) округление и подушка
     total_dur_sec = float(audio.shape[-1]) / SAMPLE_RATE
-    final_segments = round_segments_safe(final_segments, q=ROUND_Q, total_dur=total_dur_sec)
-
-    # 10) лёгкая «подушка» для ASR (без налезания на соседей)
-    final_segments = pad_segments_for_asr(final_segments, pad_left=0.08, pad_right=0.12, total_dur=total_dur_sec)
+    final_segments = round_segments_expand(final_segments, q=ROUND_Q, total_dur=total_dur_sec)
+    final_segments = pad_segments_for_asr(final_segments, pad_left=0.12, pad_right=0.18, total_dur=total_dur_sec)
 
     logger.info(
         f"Diarization complete. Windows: {len(kept_windows)} → Segments: {len(final_segments)}, "

@@ -39,4 +39,4 @@ class DialogRow(Base):
         )
 
     def print(self):
-        print(f'{self.start}:{self.end}: [{self.speaker_id}] {self.row_text}')
+        print(f'{self.start:.2f}:{self.end:.2f}: [{self.speaker_id}] {self.row_text}')
