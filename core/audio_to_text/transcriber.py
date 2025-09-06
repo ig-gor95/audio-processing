@@ -53,7 +53,7 @@ def extend_speech_segments(segments: List[Dict[str, float]]) -> List[Dict[str, f
 
 def transcribe_chunk(args) -> Dict:
     audio_path, start, end = args
-    min_duration_sec = 0.3
+    min_duration_sec = 0.29
 
     try:
         waveform, sample_rate = torchaudio.load(audio_path)
