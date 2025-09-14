@@ -60,6 +60,28 @@ def find_phrases_in_df(normalized_texts, phrases, threshold=80):
         )
     )
 
+def find_phrases_in_df_full_word(normalized_texts: pd.Series, phrases) -> pd.Series:
+    texts = normalized_texts.astype(str)
+    phrases_list = [p for p in phrases if isinstance(p, str) and p.strip()]
+    if not phrases_list:
+        return pd.Series([None] * len(texts), index=texts.index)
+
+    def _phrase_to_pattern(p: str) -> str:
+        tokens = re.findall(r"[A-Za-zА-Яа-яЁё0-9]+", p)
+        if not tokens:
+            return ""
+        inner = r"(?:\W+)+".join(map(re.escape, tokens))
+        return rf"(?<!\w)(?:{inner})(?!\w)"
+
+    parts = [_phrase_to_pattern(p) for p in phrases_list]
+    parts = [p for p in parts if p]
+    if not parts:
+        return pd.Series([None] * len(texts), index=texts.index)
+
+    pattern = re.compile(rf"({'|'.join(parts)})", flags=re.IGNORECASE | re.UNICODE)
+
+    matches = texts.str.extract(pattern, expand=False)
+    return matches.where(matches.notna(), None)
 
 def extract_valid_names_optimized(
     texts: Union[pd.Series, Sequence[Optional[str]]],
