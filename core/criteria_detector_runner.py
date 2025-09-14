@@ -43,22 +43,17 @@ def extract_valid_names(text: str) -> Optional[str]:
 
 
 if __name__ == "__main__":
-    # res = extract_valid_names("Вот такая тема возникла. А клава придет")
-    # print(res)
-    # dialog_rows_repository = DialogRowRepository()
-    # audio_dialog_repository = AudioDialogRepository()
-    # dialog_criteria_repository = DialogCriteriaRepository()
-    #
-    # rows = dialog_rows_repository.find_rows_without_criteria()
-    # total = len(rows)
-    # count = 0
-    # for chunk in chunk_list(rows):
-    #     result = process_rows_parallel(chunk)
-    #     count += 1000
-    #     print(f"saved {len(result)} rows. Processed {count} of {total} rows.")
-    #     dialog_criteria_repository.update_all_criteria(result)
-    # dialogs = audio_dialog_repository.find_all()
-    # for dialog in dialogs:
-    #     print_dialog_with_row_text(dialog.id, 'за ожидание')
+    dialog_rows_repository = DialogRowRepository()
+    audio_dialog_repository = AudioDialogRepository()
+    dialog_criteria_repository = DialogCriteriaRepository()
 
-    print_dialog(uuid.UUID("009fc88f-6252-434b-88dd-42b39b1eb4b4"))
+    rows = dialog_rows_repository.find_rows_without_criteria()
+    total = len(rows)
+    count = 0
+    for chunk in chunk_list(rows):
+        result = process_rows_parallel(chunk)
+        count += 1000
+        print(f"saved {len(result)} rows. Processed {count} of {total} rows.")
+        dialog_criteria_repository.update_all_criteria(result)
+
+    # print_dialog(uuid.UUID("009fc88f-6252-434b-88dd-42b39b1eb4b4"))
