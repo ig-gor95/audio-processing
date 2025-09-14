@@ -68,6 +68,13 @@ class AudioDialogRepository:
                 dialog.status = new_status
                 dialog.processing_time = processed_time
 
+    def update_theme(self, file_id: str, theme: str) -> None:
+        """Update processing status and time using ORM."""
+        with self._get_session() as session:
+            dialog = session.query(AudioDialog).get(file_id)
+            if dialog:
+                dialog.theme = theme
+
     def find_all(self) -> List[AudioDialog]:
         with self._get_session() as session:
             return session.query(AudioDialog).all()

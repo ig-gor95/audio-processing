@@ -21,6 +21,7 @@ class AudioDialog(Base):
     duration = Column(String(20), nullable=False)
     processing_time = Column(Float)
     status = Column(SQLEnum(AudioDialogStatus), default=AudioDialogStatus.NOT_PROCESSED)
+    theme = Column(String(300))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

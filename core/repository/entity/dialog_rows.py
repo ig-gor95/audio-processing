@@ -38,5 +38,9 @@ class DialogRow(Base):
             has_greeting=data.get('has_greeting', False)
         )
 
+    def to_str(self):
+        return f'{self.start:.2f}:{self.end:.2f}: [{self.speaker_id}] {self.row_text}'
+
     def print(self):
-        print(f'{self.start:.2f}:{self.end:.2f}: [{self.speaker_id}] {self.row_text}')
+        print(self.to_str())
+
