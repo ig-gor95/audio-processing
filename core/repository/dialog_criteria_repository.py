@@ -33,7 +33,9 @@ class DialogCriteriaRepository:
         return pd.read_sql(f"""
                     SELECT row.*
                     from dialog_rows row
+                    left join dialog_criterias c on c.dialog_row_fk_id = row.id
                     where row.row_text is not null and row.row_text != ' ' and row.row_text != ''
+                    and c.dialog_criteria_id is null
                 """, self.engine)
 
     def save_bulk(self, dialog_rows: List[DialogCriteria]) -> None:

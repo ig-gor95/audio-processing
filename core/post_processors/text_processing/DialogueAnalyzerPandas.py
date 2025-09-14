@@ -166,65 +166,65 @@ class DialogueAnalyzerPandas:
         """Analyze dialogue text for various linguistic features."""
         dialog_criteria_repository = DialogCriteriaRepository()
 
-        unprocessed_rows_pd = dialog_criteria_repository.pd_get_all_unprocessed_rows()
+        rows_df = dialog_criteria_repository.pd_get_all_unprocessed_rows()
 
-        logger.info(f"Retrieved {len(unprocessed_rows_pd)} dialogue rows")
-        texts = unprocessed_rows_pd['row_text']
-        normilized_texts = texts.apply(normalize_text)
-        order, processing, resume = self.order_pattern_detector(normilized_texts)
+        logger.info(f"Retrieved {len(rows_df)} dialogue rows")
+        texts = rows_df['row_text']
+        normalized_texts = texts.apply(normalize_text)
+        order, processing, resume = self.order_pattern_detector(normalized_texts)
         logger.info(f"Recognised order, processing, resume")
-        unprocessed_rows_pd['order_offer'] = order
+        rows_df['order_offer'] = order
         logger.info(f"Recognised order_offer")
-        unprocessed_rows_pd['order_processing'] = processing
+        rows_df['order_processing'] = processing
         logger.info(f"Recognised order_processing")
-        unprocessed_rows_pd['order_resume'] = resume
+        rows_df['order_resume'] = resume
         logger.info(f"Recognised order_resume")
-        unprocessed_rows_pd['order_type'] = self.order_type_detector(unprocessed_rows_pd)
+        rows_df['order_type'] = self.order_type_detector(rows_df)
         logger.info(f"Recognised order_type")
-        unprocessed_rows_pd['found_name'] = self.name_detector(normilized_texts)
+        rows_df['found_name'] = self.name_detector(normalized_texts)
         logger.info(f"Recognised found_name")
-        unprocessed_rows_pd['await_requests'] = self.await_request_detector(normilized_texts)
+        rows_df['await_requests'] = self.await_request_detector(normalized_texts)
         logger.info(f"Recognised await_requests")
-        unprocessed_rows_pd['axis_attention'] = self.axis_attention_detector(normilized_texts)
+        rows_df['axis_attention'] = self.axis_attention_detector(normalized_texts)
         logger.info(f"Recognised axis_attention")
-        unprocessed_rows_pd['ongoing_sale'] = self.ongoing_sale_detector(normilized_texts)
+        rows_df['ongoing_sale'] = self.ongoing_sale_detector(normalized_texts)
         logger.info(f"Recognised ongoing_sale")
-        unprocessed_rows_pd['working_hours'] = self.working_hours_detector(normilized_texts)
+        rows_df['working_hours'] = self.working_hours_detector(normalized_texts)
         logger.info(f"Recognised working_hours")
-        unprocessed_rows_pd['await_requests_exit'] = self.await_request_exit_detector(normilized_texts)
+        rows_df['await_requests_exit'] = self.await_request_exit_detector(normalized_texts)
         logger.info(f"Recognised await_requests")
-        unprocessed_rows_pd['farewell_phrase'] = find_phrases_in_df(normilized_texts, self.farewell_phrases)
+        rows_df['farewell_phrase'] = find_phrases_in_df(normalized_texts, self.farewell_phrases)
         logger.info(f"Recognised farewell_phrase")
-        unprocessed_rows_pd['telling_name_phrases'] = find_phrases_in_df(normilized_texts, self.telling_name_phrases)
+        rows_df['telling_name_phrases'] = find_phrases_in_df(normalized_texts, self.telling_name_phrases)
         logger.info(f"Recognised telling_name_phrases")
-        unprocessed_rows_pd['greeting_phrase'] = find_phrases_in_df(normilized_texts, self.greeting_phrases)
+        rows_df['greeting_phrase'] = find_phrases_in_df(normalized_texts, self.greeting_phrases)
         logger.info(f"Recognised greeting_phrase")
-        unprocessed_rows_pd['interjections'] = self.interjections_detector(normilized_texts)
+        rows_df['interjections'] = self.interjections_detector(normalized_texts)
         logger.info(f"Recognised interjections")
-        unprocessed_rows_pd['abbreviations'] = self.abbreviations_detector(normilized_texts)
+        rows_df['abbreviations'] = self.abbreviations_detector(normalized_texts)
         logger.info(f"Recognised abbreviations")
-        unprocessed_rows_pd['inappropriate_phrases'] = self.inappropriate_phrases_detector(normilized_texts)
+        rows_df['inappropriate_phrases'] = self.inappropriate_phrases_detector(normalized_texts)
         logger.info(f"Recognised inappropriate_phrases")
-        unprocessed_rows_pd['slang'] = self.slang_detector(normilized_texts)
+        rows_df['slang'] = self.slang_detector(normalized_texts)
         logger.info(f"Recognised slang")
-        unprocessed_rows_pd['parasite_words'] = self.parasites_detector(normilized_texts)
+        rows_df['parasite_words'] = self.parasites_detector(normalized_texts)
         logger.info(f"Recognised parasite_words")
-        unprocessed_rows_pd['non_professional_phrases'] = self.non_professional_patterns_detector(normilized_texts)
+        rows_df['non_professional_phrases'] = self.non_professional_patterns_detector(normalized_texts)
         logger.info(f"Recognised non_professional_phrases")
-        unprocessed_rows_pd['stop_words'] = self.stop_words_detector(normilized_texts)
+        rows_df['stop_words'] = self.stop_words_detector(normalized_texts)
         logger.info(f"Recognised stop_words")
-        unprocessed_rows_pd['swear_words'] = self.swear_detector(normilized_texts)
+        rows_df['swear_words'] = self.swear_detector(normalized_texts)
         logger.info(f"Recognised swear_words")
-        unprocessed_rows_pd['diminutives'] = self.diminutives_detector(normilized_texts)
+        rows_df['diminutives'] = self.diminutives_detector(normalized_texts)
         logger.info(f"Recognised diminutives")
-        unprocessed_rows_pd['dialog_criteria_id'] = [str(uuid.uuid4()) for _ in range(len(normilized_texts))]
+        rows_df['dialog_criteria_id'] = [str(uuid.uuid4()) for _ in range(len(normalized_texts))]
         logger.info(f"Set up dialog_criteria_id")
-        unprocessed_rows_pd['dialog_row_fk_id'] = unprocessed_rows_pd.pop('id')
+        rows_df['dialog_row_fk_id'] = rows_df.pop('id')
         logger.info(f"Set detected_speaker_id")
-        unprocessed_rows_pd['detected_speaker_id'] = self.detect_sales(unprocessed_rows_pd)
+        rows_df['detected_speaker_id'] = self.detect_sales(rows_df)
         logger.info(f"Update client between await and greeting")
-        unprocessed_rows_pd = self.update_client_between_await_and_greeting(unprocessed_rows_pd)
-        dialog_criteria_pd = unprocessed_rows_pd[
+        rows_df = self.update_client_between_await_and_greeting(rows_df)
+        dialog_criteria_pd = rows_df[
             ['dialog_criteria_id', 'dialog_row_fk_id', 'greeting_phrase', 'found_name', 'ongoing_sale', 'working_hours',
              'interjections', 'parasite_words', 'abbreviations', 'slang', 'telling_name_phrases', 'axis_attention',
              'inappropriate_phrases', 'diminutives', 'stop_words', 'swear_words', 'detected_speaker_id', 'order_type',

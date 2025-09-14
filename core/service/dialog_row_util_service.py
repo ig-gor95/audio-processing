@@ -22,6 +22,13 @@ def print_dialog(dialog_id: UUID):
     for row in rows:
         row.print()
 
+def print_dialog_to_text(dialog_id: UUID):
+    rows = get_all_rows_in_order(dialog_id)
+    parts = []
+    for row in rows:
+        parts.append(row.to_str())
+    return "\n".join(parts)
+
 def print_dialog_with_row_text(dialog_id: UUID, should_be_text: str):
     rows = get_all_rows_in_order(dialog_id)
     for row in rows:
