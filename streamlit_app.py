@@ -3,26 +3,77 @@ import re
 import streamlit as st
 import pandas as pd
 import numpy as np
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from textwrap import shorten
+from collections import Counter
 
 st.set_page_config(page_title="Диалог-лендинг", layout="wide")
 
 THEME_COL = "theme"
 TEXT_COL  = "row_text"
+DIALOG_COL_FALLBACK = "audio_dialog_fk_id"
+SPEAKER_COL_FALLBACK = "detected_speaker_id"
+OPERATOR_VALUE = "SALES"   # оператор зафиксирован
+
+# ======== Кандидаты критериев (из вашего CSV) ========
+ALL_BOOL_CANDIDATES = [
+    "greeting_phrase","found_name","ongoing_sale","working_hours","interjections",
+    "parasite_words","abbreviations","slang","telling_name_phrases","inappropriate_phrases",
+    "diminutives","stop_words","swear_words","non_professional_phrases","order_offer",
+    "order_processing","order_resume","await_requests","await_requests_exit","axis_attention",
+    "order_type","objection_processed","evaluation_offered","script_hint_present","brand_named",
+    "transfer_to_other_operator","self_pickup_address_spoken","client_contacts_taken",
+    "reserve_terms","delivery_terms","end_correct","made_accent_on_availability",
+    "who_finished_dialog_operator","who_finished_dialog_client","interrupts_client",
+    "uncertain_speech"
+]
+
+# «Проблемные» критерии (для словарной частотки)
+NEGATIVE_CRITERIA = [
+    "parasite_words", "swear_words", "stop_words", "slang", "inappropriate_phrases",
+    "non_professional_phrases", "diminutives", "interrupts_client", "uncertain_speech"
+]
+
+# Порядок и русские подписи для вывода по строкам диалога
+CRITERIA_DISPLAY: List[Tuple[str, str]] = [
+    ("greeting_phrase", "Приветствие"),
+    ("telling_name_phrases", "Назвал имя"),
+    ("found_name", "Обращение по имени"),
+    ("order_offer", "Предложение заказа"),
+    ("order_processing", "Оформление заказа"),
+    ("order_resume", "Подведение итогов"),
+    ("objection_processed", "Отработка возражений"),
+    ("script_hint_present", "Подсказка скрипта"),
+    ("evaluation_offered", "Предложена оценка"),
+    ("client_contacts_taken", "Контакты клиента"),
+    ("self_pickup_address_spoken", "Адрес самовывоза"),
+    ("working_hours", "Режим работы"),
+    ("reserve_terms", "Сроки резерва"),
+    ("delivery_terms", "Сроки доставки"),
+    ("axis_attention", "Акцент на наличии"),
+    ("made_accent_on_availability", "Акцент (наличие)"),
+    ("transfer_to_other_operator", "Перевод оператора"),
+    ("who_finished_dialog_operator", "Завершил оператор"),
+    ("who_finished_dialog_client", "Завершил клиент"),
+    ("interrupts_client", "Перебивает клиента"),
+    ("uncertain_speech", "Неуверенность речи"),
+    # «негативная» лексика
+    ("parasite_words", "Слова-паразиты"),
+    ("stop_words", "Стоп-слова"),
+    ("slang", "Сленг"),
+    ("non_professional_phrases", "Непроф. фразы"),
+    ("inappropriate_phrases", "Неприемлемые"),
+    ("swear_words", "Мат"),
+    ("diminutives", "Уменьшительные"),
+]
 
 # ───────────────────────────────── Helpers ─────────────────────────────────
 @st.cache_data(show_spinner=False)
-def load_df(upload, theme_col: str = THEME_COL) -> tuple[pd.DataFrame, int]:
-    """
-    Загружает CSV/Parquet и сразу отфильтровывает строки с пустой темой.
-    Пустая: NaN, пустая/пробельная строка, текстовые 'nan'/'none'/'null'.
-    Возвращает (df, dropped_count).
-    """
+def load_df(upload, theme_col: str = THEME_COL) -> Tuple[pd.DataFrame, int]:
+    """Загружает CSV/Parquet и фильтрует строки с пустой темой (NaN/пустые/‘nan’/’none’/’null’)."""
     if upload is None:
         return pd.DataFrame(), 0
-
     name = upload.name.lower()
     if name.endswith(".csv"):
         df = pd.read_csv(upload)
@@ -34,30 +85,61 @@ def load_df(upload, theme_col: str = THEME_COL) -> tuple[pd.DataFrame, int]:
     dropped = 0
     if theme_col in df.columns:
         s = df[theme_col].astype(str).str.strip()
-        mask = df[theme_col].notna() & s.ne("") & ~s.str.lower().isin(["nan", "none", "null"])
+        mask = df[theme_col].notna() & s.ne("") & ~s.str.lower().isin(["nan","none","null"])
         dropped = int((~mask).sum())
         df = df.loc[mask].copy()
-
     return df, dropped
-
 
 def ensure_columns(df: pd.DataFrame, cols: List[str]) -> List[str]:
     return [c for c in cols if c in df.columns]
 
+FALSE_TOKENS = {"", "0", "нет", "false", "none", "nan", "null", "no", "off"}
 
+def cell_to_flag(x) -> int:
+    """
+    Правило для строковых критериев:
+    - если значение NaN/пусто/в FALSE_TOKENS → 0
+    - если непустая строка (любая фраза) → 1
+    - если число → 1 только если ==1
+    """
+    if x is None or (isinstance(x, float) and pd.isna(x)):
+        return 0
+    # numbers
+    if isinstance(x, (int, np.integer, float, np.floating)):
+        try:
+            return 1 if int(float(x)) == 1 else 0
+        except Exception:
+            return 0
+    s = str(x).strip()
+    if s == "":
+        return 0
+    if s.lower() in FALSE_TOKENS:
+        return 0
+    return 1  # любая непустая фраза трактуется как сработавший критерий
+
+@st.cache_data(show_spinner=False)
+def normalize_flags_line_level(df: pd.DataFrame, candidate_cols: List[str]) -> pd.DataFrame:
+    """Нормализует все критерии на уровне СТРОК (по правилу cell_to_flag), не трогая другие колонки."""
+    df = df.copy()
+    for c in candidate_cols:
+        if c in df.columns:
+            df[c] = df[c].apply(cell_to_flag).astype(int)
+        else:
+            df[c] = 0
+    return df
+
+@st.cache_data(show_spinner=False)
 def aggregate_by_dialog(df: pd.DataFrame, dialog_col: str, bool_cols: List[str]) -> pd.DataFrame:
-    # Any-агрегация: max по 0/1
+    """Агрегация признаков на уровень диалога (max по 0/1)."""
     agg = {c: "max" for c in bool_cols}
-    # Метаданные (не агрегируем ключ)
     for meta in ["file_name", "duration", "status", "theme", "audio_dialog_fk_id"]:
-        if meta == dialog_col:  # на всякий
+        if meta == dialog_col:
             continue
         if meta in df.columns and meta not in agg:
             agg[meta] = "first"
-
     g = df.groupby(dialog_col, dropna=False, as_index=False).agg(agg)
 
-    # Если нет готовой duration — считаем по span (min(start) → max(end))
+    # duration по span, если нет готовой
     has_start_end = ("start" in df.columns) and ("end" in df.columns)
     if "duration" not in g.columns and has_start_end:
         dd = df.groupby(dialog_col, dropna=False).agg(start_min=("start","min"), end_max=("end","max")).reset_index()
@@ -69,27 +151,21 @@ def aggregate_by_dialog(df: pd.DataFrame, dialog_col: str, bool_cols: List[str])
             dd["duration"] = (pd.to_numeric(dd["end_max"], errors="coerce") - pd.to_numeric(dd["start_min"], errors="coerce")).abs()
         g = g.merge(dd[[dialog_col, "duration"]], on=dialog_col, how="left")
 
-    # Чтобы нигде в UI не всплывал сырой theme с NaN:
-    g = g.drop(columns=["theme"], errors="ignore")
-    return g
+    return g.drop(columns=["theme"], errors="ignore")
 
-
-def compute_dialog_stats(df: pd.DataFrame, dialog_col: str, speaker_col: str, operator_value: str | int) -> pd.DataFrame:
+@st.cache_data(show_spinner=False)
+def compute_dialog_stats(df: pd.DataFrame, dialog_col: str, speaker_col: str, operator_value: str) -> pd.DataFrame:
+    """Расчёт времени оператора/клиента/пауз на диалог."""
     needed = {dialog_col, speaker_col, "start", "end"}
     if not needed.issubset(df.columns):
         return pd.DataFrame()
-
     rows = []
     sort_cols = []
-    if "audio_dialog_fk_id" in df.columns:
-        sort_cols.append("audio_dialog_fk_id")
-    if "row_num" in df.columns:
-        sort_cols.append("row_num")
-    if not sort_cols:
-        sort_cols = ["start", "end"]
+    if "audio_dialog_fk_id" in df.columns: sort_cols.append("audio_dialog_fk_id")
+    if "row_num" in df.columns:            sort_cols.append("row_num")
+    if not sort_cols:                       sort_cols = ["start","end"]
 
     for did, sub in df.sort_values(sort_cols, na_position="last").groupby(dialog_col, dropna=False):
-        sub = sub.copy()
         s = pd.to_datetime(sub["start"], errors="coerce")
         e = pd.to_datetime(sub["end"], errors="coerce")
         if s.notna().all() and e.notna().all():
@@ -101,12 +177,11 @@ def compute_dialog_stats(df: pd.DataFrame, dialog_col: str, speaker_col: str, op
             seg_dur = (e_num - s_num).clip(lower=0)
             span = float((e_num.max() - s_num.min())) if len(sub) else 0.0
 
-        total_speech = float(pd.to_numeric(seg_dur, errors="coerce").fillna(0).sum())
-        total_pause = max(span - total_speech, 0.0) if span else 0.0
-
         op_mask = sub[speaker_col].astype(str) == str(operator_value)
         op_time = float(pd.to_numeric(seg_dur[op_mask], errors="coerce").fillna(0).sum())
         cl_time = float(pd.to_numeric(seg_dur[~op_mask], errors="coerce").fillna(0).sum())
+        total_speech = float(pd.to_numeric(seg_dur, errors="coerce").fillna(0).sum())
+        total_pause = max(span - total_speech, 0.0) if span else 0.0
 
         rows.append({
             dialog_col: did,
@@ -120,28 +195,7 @@ def compute_dialog_stats(df: pd.DataFrame, dialog_col: str, speaker_col: str, op
         })
     return pd.DataFrame(rows)
 
-
-def build_dialog_texts(df: pd.DataFrame, dialog_col: str, speaker_col: str, text_col: str) -> dict:
-    texts = {}
-    sort_cols = []
-    if "audio_dialog_fk_id" in df.columns:
-        sort_cols.append("audio_dialog_fk_id")
-    if "row_num" in df.columns:
-        sort_cols.append("row_num")
-    if not sort_cols:
-        sort_cols = ["start", "end"]
-
-    def lab(x):
-        if pd.isna(x): return "СПИКЕР"
-        return str(x)
-
-    for did, sub in df.sort_values(sort_cols, na_position="last").groupby(dialog_col, dropna=False):
-        lines = [f"**{lab(r[speaker_col])}:** {r[text_col]}" for _, r in sub.iterrows()]
-        texts[str(did)] = "\n\n".join(lines)
-    return texts
-
-
-# ───────────── Темы: продажа / жалоба / вопрос (строгая нормализация) ─────────────
+# ───────────── Темы: продажа / жалоба / вопрос / возврат ─────────────
 def _split_theme_tokens(v):
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return []
@@ -159,39 +213,29 @@ def _split_theme_tokens(v):
         toks.append(t)
     return toks
 
-
+@st.cache_data(show_spinner=False)
 def detect_theme_sections_exact(df: pd.DataFrame, dialog_col: str, theme_col: str = THEME_COL) -> pd.DataFrame:
-    """
-    Метки:
-      is_purchase  -> 'продаж*' или токен 'покупка' или англ. 'sale*'
-      is_question  -> 'вопрос*'
-      is_return    -> '\bвозврат\w*' или 'оформление возврата'
-      is_complaint -> 'жалоб\w*' или 'претенз\w*'   (ВАЖНО: без возвратов)
-    """
+    """Флаги is_purchase / is_question / is_return / is_complaint (без возвратов)."""
     if dialog_col not in df.columns or theme_col not in df.columns:
         return pd.DataFrame()
-
     tmp = pd.DataFrame({dialog_col: df[dialog_col], theme_col: df[theme_col]})
     rows = []
     for did, sub in tmp.groupby(dialog_col, dropna=False):
-        # собрать нормализованные токены по диалогу
         toks = []
         for v in sub[theme_col]:
             toks.extend(_split_theme_tokens(v))
         uniq = [t for t in dict.fromkeys(toks) if t]
 
-        def any_match(patterns):
-            return any(any(p.search(t) for p in patterns) for t in uniq)
+        def any_match(patterns): return any(any(p.search(t) for p in patterns) for t in uniq)
 
-        sale_patterns      = [re.compile(r"продажа*", re.I)]
-        question_patterns  = [re.compile(r"вопрос*", re.I)]
-        return_patterns    = [re.compile(r"оформление возврата*", re.I)]
-        complaint_patterns = [re.compile(r"жалоба*", re.I)]
+        sale_patterns      = [re.compile(r"продаж\w*", re.I), re.compile(r"sale\w*", re.I)]
+        question_patterns  = [re.compile(r"вопрос\w*", re.I)]
+        return_patterns    = [re.compile(r"\bвозврат\w*", re.I), re.compile(r"оформление\s+возврата", re.I)]
+        complaint_patterns = [re.compile(r"жалоб\w*", re.I), re.compile(r"претенз\w*", re.I)]
 
         is_purchase = any_match(sale_patterns) or ("покупка" in uniq)
         is_question = any_match(question_patterns)
         is_return   = any_match(return_patterns)
-        # жалоба теперь БЕЗ возвратов
         is_complaint = (any_match(complaint_patterns)) and (not is_return)
 
         rows.append({
@@ -204,13 +248,132 @@ def detect_theme_sections_exact(df: pd.DataFrame, dialog_col: str, theme_col: st
         })
     return pd.DataFrame(rows)
 
+# ───────────── Частотка «плохих слов» ─────────────
+RU_STOP = set("""
+и в во но на не ни а я ты вы мы он она оно они что это тот как где когда или
+из к у о от до для про над под при между без со то ли бы же же-то же ведь уж
+еще уже ну да ой э эй ё
+""".split())
+WORD_RE = re.compile(r"[a-zA-Zа-яА-ЯёЁ0-9\-]+")
+
+@st.cache_data(show_spinner=False)
+def bad_words_stats(df: pd.DataFrame, criteria_cols: List[str], text_col: str = TEXT_COL, topn: int = 40) -> pd.DataFrame:
+    use_cols = [c for c in criteria_cols if c in df.columns]
+    if not use_cols or text_col not in df.columns:
+        return pd.DataFrame(columns=["Слово/фраза", "Частота", "Критерии(пример)"])
+
+    mask = np.zeros(len(df), dtype=bool)
+    for c in use_cols:
+        mask |= (pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int).to_numpy() == 1)
+
+    sub = df.loc[mask, [text_col] + use_cols].dropna(subset=[text_col]).copy()
+    if sub.empty:
+        return pd.DataFrame(columns=["Слово/фраза", "Частота", "Критерии(пример)"])
+
+    cnt = Counter()
+    sample_for_word = {}
+    for _, r in sub.iterrows():
+        text = str(r[text_col]).lower().replace("ё","е")
+        tokens = [t for t in WORD_RE.findall(text) if t and t not in RU_STOP]
+        tokens = [t for t in tokens if len(t) >= 2]
+        cnt.update(tokens)
+        active = [c for c in use_cols if int(pd.to_numeric(r[c], errors="coerce") or 0) == 1]
+        for t in set(tokens[:5]):
+            if t not in sample_for_word:
+                sample_for_word[t] = ", ".join(active[:3])
+
+    most = cnt.most_common(topn)
+    return pd.DataFrame([{"Слово/фраза": w, "Частота": f, "Критерии(пример)": sample_for_word.get(w, "")} for w, f in most])
+
+# ───────────── AgGrid логи → выбранный dialog_id ─────────────
+def show_logs_and_get_dialog_id(filtered_df: pd.DataFrame, dialog_col: str, title: str) -> str | None:
+    st.markdown(f"#### Логи — {title}")
+
+    cols_to_show = []
+    for meta in ["file_name","themes_joined","status","duration"]:
+        if meta in filtered_df.columns:
+            cols_to_show.append(meta)
+
+    grid_df = (
+        filtered_df[[dialog_col] + cols_to_show]
+        .copy()
+        .drop_duplicates(subset=[dialog_col])
+        .rename(columns={
+            "file_name": "Файл", "themes_joined":"Тема",
+            "status":"Статус","duration":"Длительность, с",
+            dialog_col: "dialog_id"
+        })
+    )
+    if "Тема" in grid_df.columns:
+        grid_df["Тема"] = grid_df["Тема"].astype(str).apply(lambda s: shorten(s, width=120, placeholder="…"))
+
+    q = st.text_input("Поиск по логам", "", key=f"q_{title}")
+
+    gb = GridOptionsBuilder.from_dataframe(grid_df)
+    gb.configure_default_column(resizable=True, sortable=True, filter=True)
+    gb.configure_column("dialog_id", hide=True)
+    gb.configure_selection(selection_mode="single", use_checkbox=False)
+    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=100)
+    gb.configure_grid_options(domLayout="normal", rowHeight=32, quickFilterText=q,
+                              animateRows=False, suppressRowClickSelection=False)
+    go = gb.build()
+
+    grid_res = AgGrid(
+        grid_df, gridOptions=go, height=520, width="100%", theme="balham",
+        fit_columns_on_grid_load=True, allow_unsafe_jscode=False,
+        update_mode=GridUpdateMode.SELECTION_CHANGED, enable_enterprise_modules=False, reload_data=False
+    )
+
+    sel = grid_res.get("selected_rows", [])
+    if isinstance(sel, pd.DataFrame):
+        sel = sel.to_dict(orient="records")
+    elif not isinstance(sel, list):
+        sel = []
+    if not sel:
+        return None
+    return str(sel[0].get("dialog_id"))
+
+# ───────────── Таблица строк диалога с критериями (✅/❌) ─────────────
+def render_dialog_criteria_table(df: pd.DataFrame, dialog_id: str, dialog_col: str, speaker_col: str, text_col: str):
+    """Показывает таблицу строк диалога со столбцами-критериями (✅/❌), без сплошного текста."""
+    sub = df[df[dialog_col].astype(str) == str(dialog_id)].copy()
+    if sub.empty:
+        st.info("Нет строк для этого диалога.")
+        return
+
+    # сортировка строк диалога
+    sort_cols = []
+    if "audio_dialog_fk_id" in sub.columns: sort_cols.append("audio_dialog_fk_id")
+    if "row_num" in sub.columns:            sort_cols.append("row_num")
+    if not sort_cols:                        sort_cols = ["start","end"]
+    sub = sub.sort_values(sort_cols, na_position="last")
+
+    # базовые столбцы
+    base_cols = []
+    for c in ["start","end"]:
+        if c in sub.columns: base_cols.append(c)
+    if speaker_col in sub.columns:
+        base_cols.append(speaker_col)
+    if text_col in sub.columns:
+        base_cols.append(text_col)
+
+    # нормализуем критерии ПО СТРОКАМ заново (защита от загрязнения)
+    local = normalize_flags_line_level(sub, [c for c, _ in CRITERIA_DISPLAY])
+
+    # визуальные столбцы критериев
+    for col, ru in CRITERIA_DISPLAY:
+        if col in local.columns:
+            local[ru] = local[col].apply(lambda v: "✅" if int(v) == 1 else "❌")
+
+    show_cols = base_cols + [ru for _, ru in CRITERIA_DISPLAY if _ in local.columns]
+    st.dataframe(local[show_cols], use_container_width=True, hide_index=True)
 
 # ───────────────────────────── Sidebar & data ─────────────────────────────
 st.sidebar.header("Данные")
 if st.sidebar.button("♻️ Сбросить кэш"):
     st.cache_data.clear()
     st.cache_resource.clear()
-    st.experimental_rerun()
+    st.rerun()
 
 upl = st.sidebar.file_uploader("CSV или Parquet", type=["csv","parquet"])
 df, dropped = load_df(upl)
@@ -220,44 +383,18 @@ if dropped:
     st.info(f"Отфильтровано строк без темы: {dropped}")
 
 # Автоопределение колонок
-dialog_col = "audio_dialog_fk_id" if "audio_dialog_fk_id" in df.columns else st.sidebar.selectbox("Колонка диалога", df.columns)
-speaker_col = "detected_speaker_id" if "detected_speaker_id" in df.columns else st.sidebar.selectbox("Колонка спикера", df.columns)
-text_col = "row_text" if "row_text" in df.columns else st.sidebar.selectbox("Колонка текста", df.columns)
+dialog_col = DIALOG_COL_FALLBACK if DIALOG_COL_FALLBACK in df.columns else st.sidebar.selectbox("Колонка диалога", df.columns)
+speaker_col = SPEAKER_COL_FALLBACK if SPEAKER_COL_FALLBACK in df.columns else st.sidebar.selectbox("Колонка спикера", df.columns)
+text_col = TEXT_COL if TEXT_COL in df.columns else st.sidebar.selectbox("Колонка текста", df.columns)
 
-OPERATOR_VALUE = "SALES"
+# Нормализуем критерии ПО СТРОКАМ (важно: в ваших данных это текст фраз)
+df = normalize_flags_line_level(df, ALL_BOOL_CANDIDATES)
 
-# Кандидаты булевых флагов
-candidate_bool_cols = [
-    "greeting_phrase","found_name","ongoing_sale","working_hours","interjections",
-    "parasite_words","abbreviations","slang","telling_name_phrases","inappropriate_phrases",
-    "diminutives","stop_words","swear_words","non_professional_phrases","order_offer",
-    "order_processing","order_resume","await_requests","await_requests_exit","axis_attention",
-    "order_type",
-    "objection_processed","evaluation_offered","script_hint_present","brand_named",
-    "transfer_to_other_operator","self_pickup_address_spoken","client_contacts_taken",
-    "reserve_terms","delivery_terms","end_correct","made_accent_on_availability",
-    "who_finished_dialog_operator","who_finished_dialog_client","interrupts_client",
-    "uncertain_speech"
-]
-bool_cols = ensure_columns(df, candidate_bool_cols)
-for c in bool_cols:
-    if pd.api.types.is_bool_dtype(df[c]):
-        df[c] = df[c].astype(int)
-    else:
-        df[c] = df[c].apply(lambda v: bool(v) and str(v).strip().lower() not in {"0","false","нет",""}).astype(int)
-
-# Тексты диалогов
-dialog_texts = build_dialog_texts(df, dialog_col, speaker_col, text_col)
-
-# Агрегаты по диалогам
-dlg_flags = aggregate_by_dialog(df, dialog_col, bool_cols)
-
-# Время/паузы
+# Агрегаты диалогов + статы + темы
+dlg_flags = aggregate_by_dialog(df, dialog_col, ensure_columns(df, ALL_BOOL_CANDIDATES))
 talk_stats = compute_dialog_stats(df, dialog_col, speaker_col, OPERATOR_VALUE)
 if not talk_stats.empty:
     dlg_flags = dlg_flags.merge(talk_stats, on=dialog_col, how="left")
-
-# Темы
 try:
     themes_mat = detect_theme_sections_exact(df, dialog_col, theme_col=THEME_COL)
     if not themes_mat.empty:
@@ -273,110 +410,8 @@ if "duration" in dlg_flags.columns:
 elif "dialog_span" in dlg_flags.columns:
     total_duration = float(pd.to_numeric(dlg_flags["dialog_span"], errors="coerce").fillna(0).sum())
 
-# ─────────────────────────── Компонент логов (кликабельно) ───────────────────────────
-@st.cache_data(show_spinner=False)
-def render_dialog_text(df: pd.DataFrame, dialog_col: str, speaker_col: str, text_col: str, dialog_id: str) -> str:
-    """Собираем текст диалога по dialog_id по требованию (быстро)."""
-    sub = df[df[dialog_col].astype(str) == str(dialog_id)]
-    if sub.empty:
-        return ""
-    # Пытаемся сохранить правильный порядок фраз
-    sort_cols = []
-    if "audio_dialog_fk_id" in sub.columns: sort_cols.append("audio_dialog_fk_id")
-    if "row_num" in sub.columns:            sort_cols.append("row_num")
-    if not sort_cols:                        sort_cols = ["start", "end"]
-    sub = sub.sort_values(sort_cols, na_position="last")
-
-    def lab(x): return "СПИКЕР" if pd.isna(x) else str(x)
-    # plain text — рендерится заметно быстрее, чем markdown
-    lines = [f"{lab(r[speaker_col])}: {r[text_col]}" for _, r in sub.iterrows()]
-    return "\n\n".join(lines)
-
-
-def show_logs(filtered_df: pd.DataFrame, title: str):
-    st.markdown(f"#### Логи — {title}")
-
-    # колонки для грида (минимальный набор)
-    cols_to_show = []
-    for meta in ["file_name", "themes_joined", "status", "duration"]:
-        if meta in filtered_df.columns:
-            cols_to_show.append(meta)
-
-    # формируем отображаемые данные
-    grid_df = (
-        filtered_df[[dialog_col] + cols_to_show]
-        .copy()
-        .drop_duplicates(subset=[dialog_col])
-        .rename(columns={
-            "file_name": "Файл",
-            "themes_joined": "Тема",
-            "status": "Статус",
-            "duration": "Длительность, с",
-            dialog_col: "dialog_id",
-        })
-    )
-
-    # облегчение DOM: укоротим «Тема»
-    if "Тема" in grid_df.columns:
-        grid_df["Тема"] = grid_df["Тема"].astype(str).apply(lambda s: shorten(s, width=120, placeholder="…"))
-
-    # быстрый поиск
-    q = st.text_input("Поиск по логам", "", key=f"q_{title}")
-
-    # AgGrid options
-    gb = GridOptionsBuilder.from_dataframe(grid_df)
-    gb.configure_default_column(resizable=True, sortable=True, filter=True)
-    gb.configure_column("dialog_id", hide=True)
-    gb.configure_selection(selection_mode="single", use_checkbox=False)
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=100)
-    gb.configure_grid_options(
-        domLayout="normal",
-        rowHeight=32,
-        quickFilterText=q,
-        animateRows=False,                 # чутка быстрее
-        suppressRowClickSelection=False
-    )
-    go = gb.build()
-
-    grid_res = AgGrid(
-        grid_df,
-        gridOptions=go,
-        height=520,                # скролл
-        width="100%",
-        theme="balham",
-        fit_columns_on_grid_load=True,
-        allow_unsafe_jscode=False,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,   # без перерендера всей страницы
-        enable_enterprise_modules=False,
-        reload_data=False,
-    )
-
-    # безопасно достаём выбранную строку (в разных версиях бывает list/DF)
-    sel = grid_res.get("selected_rows", [])
-    # нормализуем к списку словарей
-    if isinstance(sel, pd.DataFrame):
-        sel = sel.to_dict(orient="records")
-    elif not isinstance(sel, list):
-        sel = []
-
-    if len(sel) == 0:
-        st.info("Кликните по строке, чтобы открыть диалог.")
-        return
-
-    did = str(sel[0].get("dialog_id"))
-
-    st.markdown("---")
-    st.markdown("##### Полный текст")
-
-    # быстрый on-demand рендер текста (без глобального словаря всех диалогов)
-    txt = render_dialog_text(df, dialog_col, speaker_col, text_col, did)
-    if not txt:
-        st.info("Текст диалога не найден.")
-    else:
-        st.text(txt)   # быстрее, чем markdown
-
 # ───────────────────────────────── Pages ─────────────────────────────────
-page = st.sidebar.radio("Страница", ["Обзор", "Критерии"], index=0)
+page = st.sidebar.radio("Страница", ["Обзор", "Аналитика критериев"], index=0)
 
 if page == "Обзор":
     st.title("📊 Обзор диалогов")
@@ -396,7 +431,11 @@ if page == "Обзор":
     with tabs[0]:
         orders_df = dlg_flags[dlg_flags.get("is_purchase", 0).fillna(0).astype(int) == 1]
         st.write(f"Количество: **{len(orders_df)}**")
-        show_logs(orders_df, "Продажа")
+        did = show_logs_and_get_dialog_id(orders_df, dialog_col, "Продажа")
+        if did:
+            st.markdown("---")
+            st.markdown("##### Диалог — строки и критерии")
+            render_dialog_criteria_table(df, did, dialog_col, speaker_col, text_col)
 
     # Жалоба (без возвратов)
     with tabs[1]:
@@ -405,101 +444,141 @@ if page == "Обзор":
             (dlg_flags.get("is_return", 0).fillna(0).astype(int) == 0)
         ]
         st.write(f"Количество: **{len(complaints_df)}**")
-        show_logs(complaints_df, "Жалоба")
+        did = show_logs_and_get_dialog_id(complaints_df, dialog_col, "Жалоба")
+        if did:
+            st.markdown("---")
+            st.markdown("##### Диалог — строки и критерии")
+            render_dialog_criteria_table(df, did, dialog_col, speaker_col, text_col)
 
     # Вопрос
     with tabs[2]:
         questions_df = dlg_flags[dlg_flags.get("is_question", 0).fillna(0).astype(int) == 1]
         st.write(f"Количество: **{len(questions_df)}**")
-        show_logs(questions_df, "Вопрос")
+        did = show_logs_and_get_dialog_id(questions_df, dialog_col, "Вопрос")
+        if did:
+            st.markdown("---")
+            st.markdown("##### Диалог — строки и критерии")
+            render_dialog_criteria_table(df, did, dialog_col, speaker_col, text_col)
 
     # Возврат
     with tabs[3]:
         returns_df = dlg_flags[dlg_flags.get("is_return", 0).fillna(0).astype(int) == 1]
         st.write(f"Количество: **{len(returns_df)}**")
-        show_logs(returns_df, "Возврат")
+        did = show_logs_and_get_dialog_id(returns_df, dialog_col, "Возврат")
+        if did:
+            st.markdown("---")
+            st.markdown("##### Диалог — строки и критерии")
+            render_dialog_criteria_table(df, did, dialog_col, speaker_col, text_col)
 
 else:
-    st.title("🧩 Критерии и их доля от тотала")
+    st.title("🧪 Аналитика критериев")
 
-    criteria_map: Dict[str, List[str]] = {
-        "Поприветствовал и назвал свое имя": ensure_columns(dlg_flags, ["greeting_phrase","telling_name_phrases"]),
-        "Обращение по имени (или спросил имя)": ensure_columns(dlg_flags, ["found_name"]),
-        "Слова-паразиты": ensure_columns(dlg_flags, ["parasite_words"]),
-        "Маты / неприемлемые фразы": ensure_columns(dlg_flags, ["swear_words","inappropriate_phrases"]),
-        "Стоп-слова": ensure_columns(dlg_flags, ["stop_words"]),
-        "Переходит на личности / сленг": ensure_columns(dlg_flags, ["slang","non_professional_phrases"]),
-        "Предложение оформить заказ": ensure_columns(dlg_flags, ["order_offer"]),
-        "Оформление заказа": ensure_columns(dlg_flags, ["order_processing"]),
-        "Подведение итогов по заказу": ensure_columns(dlg_flags, ["order_resume"]),
-        "Режим ожидания": ensure_columns(dlg_flags, ["await_requests"]),
-        "Режим работы магазина": ensure_columns(dlg_flags, ["working_hours"]),
-        "Сделал акцент на наличии / ось внимания": ensure_columns(dlg_flags, ["axis_attention"]),
-        "Тип заказа / подбор по авто": ensure_columns(dlg_flags, ["order_type"]),
-        "Отработано ли возражение": ensure_columns(dlg_flags, ["objection_processed"]),
-        "Есть ли подсказка (скрипт доп продаж)": ensure_columns(dlg_flags, ["script_hint_present"]),
-        "Предложена ли оценка": ensure_columns(dlg_flags, ["evaluation_offered"]),
-        "Контакные данные клиента": ensure_columns(dlg_flags, ["client_contacts_taken"]),
-        "Озвучен адрес самовывоза": ensure_columns(dlg_flags, ["self_pickup_address_spoken"]),
-        "Перевод на другого оператора": ensure_columns(dlg_flags, ["transfer_to_other_operator"]),
-        "Сроки резерва": ensure_columns(dlg_flags, ["reserve_terms"]),
-        "Сроки доставки": ensure_columns(dlg_flags, ["delivery_terms"]),
-        "Кто завершил диалог — оператор": ensure_columns(dlg_flags, ["who_finished_dialog_operator"]),
-        "Кто завершил диалог — клиент": ensure_columns(dlg_flags, ["who_finished_dialog_client"]),
-        "Перебивает клиента": ensure_columns(dlg_flags, ["interrupts_client"]),
-        "Неуверенность в речи": ensure_columns(dlg_flags, ["uncertain_speech"]),
-        "Тема: Продажа": ensure_columns(dlg_flags, ["is_purchase"]),
-        "Тема: Жалоба": ensure_columns(dlg_flags, ["is_complaint"]),
-        "Тема: Вопрос": ensure_columns(dlg_flags, ["is_question"]),
+    # 1) Частотка «плохих слов»
+    st.subheader("Критерии для анализа лексики")
+    available_neg = [c for c in NEGATIVE_CRITERIA if c in df.columns]
+    if not available_neg:
+        st.info("В данных нет колонок с «проблемной» лексикой.")
+    else:
+        cols1, cols2, cols3 = st.columns(3)
+        chosen = []
+        for i, c in enumerate(available_neg):
+            with [cols1, cols2, cols3][i % 3]:
+                if st.checkbox(c, value=True, key=f"neg_{c}"):
+                    chosen.append(c)
+
+        if chosen:
+            bw = bad_words_stats(df, chosen, text_col=text_col, topn=40)
+            st.markdown("#### Топ-слова/фразы по выбранным критериям")
+            st.dataframe(bw, use_container_width=True, hide_index=True)
+        else:
+            st.info("Выберите хотя бы один критерий выше.")
+
+    st.markdown("---")
+
+    # 2) Доли по каждому критерию (по диалогам)
+    st.subheader("Доля диалогов с признаком (по каждому критерию)")
+    # на уровне диалога — max по строкам (мы уже нормализовали df на уровне строк)
+    crit_map: Dict[str, List[str]] = {  # русские имена столбцов
+        "Поприветствовал и назвал имя": ensure_columns(df, ["greeting_phrase","telling_name_phrases"]),
+        "Обращение/поиск имени": ensure_columns(df, ["found_name"]),
+        "Слова-паразиты": ensure_columns(df, ["parasite_words"]),
+        "Маты/неприемлемые": ensure_columns(df, ["swear_words","inappropriate_phrases"]),
+        "Стоп-слова": ensure_columns(df, ["stop_words"]),
+        "Личности/сленг": ensure_columns(df, ["slang","non_professional_phrases"]),
+        "Предложение заказа": ensure_columns(df, ["order_offer"]),
+        "Оформление заказа": ensure_columns(df, ["order_processing"]),
+        "Резюме заказа": ensure_columns(df, ["order_resume"]),
+        "Режим ожидания": ensure_columns(df, ["await_requests"]),
+        "Режим работы": ensure_columns(df, ["working_hours"]),
+        "Акцент на наличии/ось": ensure_columns(df, ["axis_attention"]),
+        "Тип заказа/подбор": ensure_columns(df, ["order_type"]),
+        "Возражение отработано": ensure_columns(df, ["objection_processed"]),
+        "Подсказка (скрипт доп. продаж)": ensure_columns(df, ["script_hint_present"]),
+        "Предложена оценка": ensure_columns(df, ["evaluation_offered"]),
+        "Контакты клиента": ensure_columns(df, ["client_contacts_taken"]),
+        "Адрес самовывоза": ensure_columns(df, ["self_pickup_address_spoken"]),
+        "Перевод на оператора": ensure_columns(df, ["transfer_to_other_operator"]),
+        "Сроки резерва": ensure_columns(df, ["reserve_terms"]),
+        "Сроки доставки": ensure_columns(df, ["delivery_terms"]),
+        "Завершил оператор": ensure_columns(df, ["who_finished_dialog_operator"]),
+        "Завершил клиент": ensure_columns(df, ["who_finished_dialog_client"]),
+        "Перебивает клиента": ensure_columns(df, ["interrupts_client"]),
+        "Неуверенность в речи": ensure_columns(df, ["uncertain_speech"]),
+        "Тема: Продажа": ensure_columns(df, ["is_purchase"]),
+        "Тема: Жалоба": ensure_columns(df, ["is_complaint"]),
+        "Тема: Вопрос": ensure_columns(df, ["is_question"]),
+        "Тема: Возврат": ensure_columns(df, ["is_return"]),
     }
 
-    crit_df = pd.DataFrame({ "dialog_id": dlg_flags[dialog_col].astype(str) })
-    for disp, cols in criteria_map.items():
+    # собираем уровень диалога
+    dlg = df[[dialog_col]].copy()
+    dlg = dlg.drop_duplicates()
+
+    for disp, cols in crit_map.items():
         if not cols:
             continue
-        v = np.zeros(len(dlg_flags), dtype=int)
+        v = np.zeros(len(df), dtype=int)
         for c in cols:
-            v = np.maximum(v, pd.to_numeric(dlg_flags[c], errors="coerce").fillna(0).astype(int).to_numpy())
-        crit_df[disp] = v
+            if c in df.columns:
+                v = np.maximum(v, pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int).to_numpy())
+        tmp = pd.DataFrame({dialog_col: df[dialog_col], disp: v})
+        tmp = tmp.groupby(dialog_col, as_index=False)[disp].max()
+        dlg = dlg.merge(tmp, on=dialog_col, how="left")
 
-    if "operator_activity_pct" in dlg_flags.columns:
-        crit_df["Активность оператора, %"] = dlg_flags["operator_activity_pct"].round(1)
-    if "pause_pct_of_dialog" in dlg_flags.columns:
-        crit_df["Паузы в диалоге, %"] = dlg_flags["pause_pct_of_dialog"].round(1)
-
+    # доли
     share_rows = []
-    exclude_cols = {"dialog_id","Активность оператора, %","Паузы в диалоге, %"}
-    for disp in [c for c in crit_df.columns if c not in exclude_cols]:
-        share = crit_df[disp].mean() * 100 if len(crit_df) else 0.0
-        share_rows.append({"Критерий": disp, "Доля от тотала": round(share, 1)})
-    summary = pd.DataFrame(share_rows).sort_values("Доля от тотала", ascending=False)
+    for disp in [c for c in dlg.columns if c != dialog_col]:
+        share = pd.to_numeric(dlg[disp], errors="coerce").fillna(0).mean() * 100 if len(dlg) else 0.0
+        share_rows.append({"Критерий": disp, "Доля от тотала, %": round(float(share), 1)})
+    summary = pd.DataFrame(share_rows).sort_values("Доля от тотала, %", ascending=False)
     st.dataframe(summary, use_container_width=True, hide_index=True)
 
     st.markdown("---")
-    st.subheader("Фильтры по критериям")
 
-    OPTION_IGNORE = "Не учитывать"
-    OPTION_T = "Только есть"
-    OPTION_F = "Только нет"
-
-    sel_state = {}
+    # 3) Быстрый фильтр по критериям → логи → таблица выбранного диалога
+    st.subheader("Быстрые фильтры и просмотр логов")
+    names = [c for c in dlg.columns if c != dialog_col]
     cols = st.columns(3)
-    names = [c for c in crit_df.columns if c not in {"dialog_id","Активность оператора, %","Паузы в диалоге, %"}]
+    sel = {}
+    OPTION_IGNORE, OPTION_T, OPTION_F = "Не учитывать", "Только есть", "Только нет"
     for i, name in enumerate(names):
         with cols[i % 3]:
-            sel_state[name] = st.selectbox(name, options=[OPTION_IGNORE, OPTION_T, OPTION_F], index=0, key=f"sel_{name}")
+            sel[name] = st.selectbox(name, [OPTION_IGNORE, OPTION_T, OPTION_F], key=f"cf_{name}")
 
-    mask = pd.Series(True, index=crit_df.index)
-    for name, choice in sel_state.items():
+    mask = pd.Series(True, index=dlg.index)
+    for name, choice in sel.items():
         if choice == OPTION_T:
-            mask &= crit_df[name] == 1
+            mask &= dlg[name] == 1
         elif choice == OPTION_F:
-            mask &= crit_df[name] == 0
+            mask &= dlg[name] == 0
 
-    filtered_ids = set(crit_df.loc[mask, "dialog_id"].astype(str))
-
-    st.markdown("### Логи (после фильтров)")
+    filtered_ids = set(dlg.loc[mask, dialog_col].astype(str))
     logs = dlg_flags.copy()
     logs[dialog_col] = logs[dialog_col].astype(str)
     logs = logs[logs[dialog_col].isin(filtered_ids)]
-    show_logs(logs, "Критерии (после фильтров)")  # тот же кликабельный компонент
+
+    did = show_logs_and_get_dialog_id(logs, dialog_col, "Критерии (после фильтров)")
+    if did:
+        st.markdown("---")
+        st.markdown("##### Диалог — строки и критерии")
+        render_dialog_criteria_table(df, did, dialog_col, speaker_col, text_col)
