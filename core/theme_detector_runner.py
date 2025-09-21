@@ -8,10 +8,46 @@ from log_utils import setup_logger
 
 logger = setup_logger(__name__)
 audio_dialog_repository = AudioDialogRepository()
+check_list = [
+    'продажа шин',
+    'продажа услуг шиномонтажа',
+    'продажа услуг установки дисков',
+    'продажа услуг по замене масла',
+    'продажа дисков',
+    'продажа колес',
+    'продажа аккумулятора',
+    'продажа покрышек',
+    'оформление возврата',
+    'вопрос по доставке'','
+    'вопрос по оформлению',
+    'вопрос по шинам',
+    'вопрос по колеса',
+    'вопрос по дискам',
+    'вопрос по возврату',
+    'вопрос по аккумулятору',
+    'вопрос по шиномонтажу',
+    'вопрос по установке дисков',
+    'вопрос по замене масла',
+    'вопрос по гарантии',
+    'вопрос по хранению колес'
+]
+
+
+def check_theme(theme):
+    if 'жалоба' in theme.lower():
+        return True
+
+    phrases = [phrase.strip() for phrase in theme.split(',')]
+
+    for phrase in phrases:
+        if phrase not in check_list:
+            return False
+
+    return True
 
 if __name__ == "__main__":
     dialogs = audio_dialog_repository.find_all()
-    to_process = [d for d in dialogs if d.theme is None]
+    to_process = dialogs
     total = len(to_process)
     logger.info(f"to process: {total}")
 
@@ -20,6 +56,9 @@ if __name__ == "__main__":
         try:
             dialog_text = print_dialog_to_text(dialog.id)
             theme = resolve_theme(dialog_text)
+            if not check_theme(theme):
+                return dialog.id, None
+
             theme = (theme or "").strip()
             return dialog.id, (theme if theme else None)
         except Exception as e:
@@ -34,7 +73,7 @@ if __name__ == "__main__":
                 try:
                     audio_dialog_repository.update_theme(dialog_id,
                                                          theme.replace('[', '').replace(']', '').lower().replace(
-                                                             'Тема диалога - ', ' ').replace('Тема диалога: ', ''))
+                                                             'Тема диалога - ', ' ').replace('Тема диалога: ', '').replace('-', ''))
                 except Exception as e:
                     logger.exception(f"failed on {dialog_id}: {e}")
                     continue
