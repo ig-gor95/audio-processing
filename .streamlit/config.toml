@@ -1,0 +1,7 @@
+[global]
+developmentMode = false        # avoids conflicts with some flags
+
+[server]
+headless = true
+maxUploadSize = 2048           # MB  (2 GB)
+maxMessageSize = 2048          # MB  (WebSocket limit; match upload)
