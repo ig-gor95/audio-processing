@@ -1,0 +1,50 @@
+name: build-windows-exe
+on:
+  workflow_dispatch: {}   # run manually from the Actions tab
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          if exist requirements.txt (
+            pip install -r requirements.txt
+          ) else (
+            echo No requirements.txt found
+          )
+          pip install pyinstaller
+
+      - name: Build portable EXE
+        shell: pwsh
+        run: |
+          # Collect Streamlit and st_aggrid data/metadata so importlib.metadata works inside the exe
+          $args = @(
+            "--onefile",
+            "--noconsole",
+            "--name", "MyApp",
+            "--collect-all", "streamlit",
+            "--copy-metadata", "streamlit",
+            "--collect-all", "st_aggrid",
+            "--copy-metadata", "streamlit-aggrid"
+          )
+          # If you ship a .streamlit config, include it (Windows uses ';' as separator)
+          if (Test-Path ".streamlit") {
+            $args += @("--add-data", ".streamlit;.streamlit")
+          }
+          pyinstaller @args launch_streamlit.py
+
+      - name: Upload artifact (portable exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyApp-windows-portable
+          path: dist/MyApp.exe
