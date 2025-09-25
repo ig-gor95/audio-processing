@@ -20,22 +20,18 @@ class StopWordsDetector:
             patterns[base_phrase].extend(variants)
         return patterns
 
-    def __call__(self, texts: pd.DataFrame):
+    def __call__(self, texts: pd.Series):
         texts = texts.str.lower()
         all_variants = [v for variants in self._patterns.values() for v in variants]
 
         def find_match(text):
-            # First check for exact matches (much faster)
-            found_exact = {v for v in all_variants if v in text}
+            # Проверка на точное совпадение целого слова
+            found_exact = {v for v in all_variants if re.search(rf'\b{re.escape(v)}\b', text)}
             if found_exact:
                 return ', '.join(sorted(found_exact))
+            else:
+                return None
 
-            found_stopwords = set()
-            for base_phrase, variants in self._patterns.items():
-                best_match = process.extractOne(text, variants, scorer=fuzz.partial_ratio, score_cutoff=self._threshold)
-                if best_match:
-                    found_stopwords.add(best_match[0])
 
-            return ', '.join(sorted(found_stopwords)) if found_stopwords else None
 
         return texts.apply(find_match)
