@@ -25,15 +25,7 @@ class NonProfessionalPatternsDetector:
             exact_matches = set(exact_pattern.findall(text))
             if exact_matches:
                 return ', '.join(sorted(exact_matches))
-
-            fuzzy_matches = process.extract(
-                text,
-                patterns,
-                scorer=fuzz.partial_ratio,
-                score_cutoff=threshold,
-                limit=len(patterns)
-            )
-            found = {match[0] for match in fuzzy_matches}
-            return ', '.join(sorted(found)) if found else None
+            else:
+                return None
 
         return texts.apply(find_match)

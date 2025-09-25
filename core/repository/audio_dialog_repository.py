@@ -8,6 +8,7 @@ import logging
 
 from core.config.datasource_config import DatabaseManager
 from core.repository.entity.audio_dialog import AudioDialog, AudioDialogStatus
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -87,3 +88,12 @@ class AudioDialogRepository:
                 .filter(AudioDialog.file_name == file_name)
                 .exists()
             ).scalar()
+
+    def get_all_for_report(self):
+        return pd.read_sql("""
+            SELECT *
+            from dialog_criterias t1
+            join dialog_rows t2 on t1.dialog_row_fk_id::uuid = t2.id
+            left join audio_dialogs t3 on t2.audio_dialog_fk_id = t3.id
+            where t3.updated_at >= '2025-09-03'
+            """, self.engine)
