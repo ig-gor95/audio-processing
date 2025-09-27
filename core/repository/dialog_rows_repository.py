@@ -107,8 +107,6 @@ class DialogRowRepository:
             if dialog_row:
                 if dialog_row.speaker_id == new_speaker_id:
                     return
-                else:
-                    print("updating")
                 dialog_row.speaker_id = new_speaker_id
                 session.commit()
 
