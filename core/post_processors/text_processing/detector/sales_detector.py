@@ -11,14 +11,19 @@ class SalesDetector:
     def __init__(self, config_path: str = "post_processors/config/sales_patterns.yaml"):
         self._config = ConfigLoader(config_path).get("patterns")
         self._threshold = 97
-        self._patterns = [pattern.lower() for pattern in self._config]
+        self._sales_patterns = [pattern.lower() for pattern in self._config['sales']]
+        self._client_patterns = [pattern.lower() for pattern in self._config['clients']]
 
     def __call__(self, dialog_rows: List[DialogRow]):
         speaker_scores = defaultdict(int)
 
         for row in dialog_rows:
-            if self.detect_by_text(row.row_text.lower()):
+            if self.detect_sales_by_text(row.row_text.lower()):
                 speaker_scores[row.speaker_id] += 1
+
+        for row in dialog_rows:
+            if self.detect_client_by_text(row.row_text.lower()):
+                speaker_scores[row.speaker_id] -= 1
 
         if speaker_scores:
             manager = max(speaker_scores.items(), key=lambda x: x[1])[0]
@@ -28,8 +33,14 @@ class SalesDetector:
         for row in dialog_rows:
             row.speaker_id = "SALES" if row.speaker_id == manager_id else "CLIENT"
 
-    def detect_by_text(self, phrase: str) -> bool:
+    def detect_sales_by_text(self, phrase: str) -> bool:
         return any(
             fuzz.partial_ratio(pattern, phrase) >= self._threshold
-            for pattern in self._patterns
+            for pattern in self._sales_patterns
+        )
+
+    def detect_client_by_text(self, phrase: str) -> bool:
+        return any(
+            fuzz.partial_ratio(pattern, phrase) >= self._threshold
+            for pattern in self._client_patterns
         )

@@ -7,6 +7,7 @@
 #  - Листы с графиками по лексике (кроме «Уменьшительные», «Междометия»)
 #  - Лист "Громкость" с потенциально громкими репликами (Sales)
 #  - Лист "Критерии%" с долей диалогов по каждому критерию
+#  - Новые флаги громкости: локальные всплески (внутри диалога) и глобальные крайности (по всем диалогам)
 # -----------------------------------------------
 
 import re
@@ -35,6 +36,7 @@ FILE_COL, STATUS_COL, DUR_COL = "file_name", "status", "duration"
 LOUD_COL = "mean_loudness"
 
 SALES_VALUE = "SALES"
+CLIENT_VALUE = "CLIENT"
 SPEAKER_1 = "Speaker_1"
 SPEAKER_2 = "Speaker_2"
 EXCEL_MAX_CELL = 32767
@@ -214,6 +216,47 @@ def estimate_merged_row_height(text: str, total_chars_width: int, line_height_pt
         lines += max(1, len(wrapped))
     return max(line_height_pt, lines * line_height_pt * 1.05)
 
+# ---------- Громкость: вспомогательные ----------
+
+def _series_loud(df: pd.DataFrame, speaker_value: str) -> pd.Series:
+    spk = detect_speaker_col(df)
+    if spk is None or LOUD_COL not in df.columns:
+        return pd.Series([], dtype=float)
+    ser = pd.to_numeric(df.loc[df[spk].astype(str) == speaker_value, LOUD_COL], errors="coerce")
+    return ser.dropna()
+
+def _concat_nonempty(parts: List[pd.Series]) -> pd.Series:
+    parts = [s for s in parts if s is not None and not s.empty]
+    if not parts:
+        return pd.Series([], dtype=float)
+    return pd.concat(parts, ignore_index=True)
+
+def _local_peak_flag(ser: pd.Series) -> int:
+    """
+    Флаг «было повышение тона» внутри диалога для одного спикера.
+    - если n>=3: max >= mean + 2*std
+    - если n in {1,2}: max >= mean * 1.25
+    - если std==0: 0
+    """
+    n = int(ser.size)
+    if n == 0:
+        return 0
+    m = float(ser.mean())
+    if n >= 3:
+        sd = float(ser.std(ddof=0))
+        if sd <= 0:
+            return 0
+        return int(float(ser.max()) >= m + 2.0 * sd)
+    return int(float(ser.max()) >= m * 1.25 if m > 0 else 0)
+
+def _sales_mean_for_dialog(sub: pd.DataFrame) -> float:
+    ser = _concat_nonempty([
+        _series_loud(sub, SALES_VALUE),
+        _series_loud(sub, SPEAKER_1),
+        _series_loud(sub, SPEAKER_2),
+    ])
+    return float(ser.mean()) if not ser.empty else np.nan
+
 # ---------- Основная функция отчёта ----------
 
 def make_report(
@@ -269,7 +312,7 @@ def make_report(
     else:
         df = df.sort_values([_DIALOG], na_position="last")
 
-    # ---- Громкость (по SALES) ----
+    # ---- Подготовка громкости по SALES (для категорий/пиков) ----
     loud_df = pd.DataFrame()
     loud_threshold = None
     loud_quantiles: Dict[str, float] = {}
@@ -300,7 +343,7 @@ def make_report(
             )
 
     def loud_to_category(x: float) -> str:
-        if not loud_quantiles or (x is None) or (isinstance(x, float) and np.isnan(x)):
+        if not loud_quantiles or x is None or (isinstance(x, float) and np.isnan(x)):
             return ""
         if x <= loud_quantiles["q20"]:
             return "очень тихо"
@@ -312,9 +355,18 @@ def make_report(
             return "громко"
         return "очень громко"
 
+    # ---- Глобальные пороги по среднему SALES (для «тише/громче 95% всех») ----
+    sales_means_list: List[float] = []
+    for _, sub_d in df.groupby(_DIALOG, dropna=False):
+        sales_means_list.append(_sales_mean_for_dialog(sub_d))
+    sales_means_per_dialog = pd.Series(sales_means_list, dtype=float).dropna()
+    global_sales_q05 = float(sales_means_per_dialog.quantile(0.05)) if len(sales_means_per_dialog) else np.nan
+    global_sales_q95 = float(sales_means_per_dialog.quantile(0.95)) if len(sales_means_per_dialog) else np.nan
+
     # ---- Агрегация на диалог ----
     present_criteria = [c for c, _ in CRITERIA_LABELS if c in df.columns]
     rows: List[Dict[str, object]] = []
+
     for did, sub in df.groupby(_DIALOG, dropna=False):
         themes = sub.get(THEME_COL, pd.Series([], dtype=str)).astype(str).map(str.strip)
         themes = [t for t in themes if t and t.lower() not in {"nan", "none", "null"}]
@@ -331,17 +383,27 @@ def make_report(
             except Exception:
                 pass
 
-        # макс. громкость по SALES в диалоге
-        max_loud = np.nan
-        spk_c = detect_speaker_col(sub)
-        if (LOUD_COL in sub.columns) and (spk_c is not None):
-            s_sales = pd.to_numeric(
-                sub.loc[sub[spk_c].astype(str).isin([SALES_VALUE, SPEAKER_1, SPEAKER_2]), LOUD_COL],
-                errors="coerce"
-            )
-            if s_sales.notna().any():
-                max_loud = float(sales := s_sales.max())
+        # локальные серии громкости внутри диалога
+        client_loud = _series_loud(sub, CLIENT_VALUE)
+        sales_loud = _concat_nonempty([
+            _series_loud(sub, SALES_VALUE),
+            _series_loud(sub, SPEAKER_1),
+            _series_loud(sub, SPEAKER_2),
+        ])
 
+        # локальные всплески (внутри диалога)
+        client_peak_flag = _local_peak_flag(client_loud)
+        sales_peak_flag  = _local_peak_flag(sales_loud)
+
+        # глобальные флаги по среднему SALES в данном диалоге
+        sales_mean_this_dialog = float(sales_loud.mean()) if sales_loud.size > 0 else np.nan
+        sales_quieter_95_global = int(pd.notna(sales_mean_this_dialog) and pd.notna(global_sales_q05)
+                                      and sales_mean_this_dialog <= global_sales_q05)
+        sales_louder_95_global  = int(pd.notna(sales_mean_this_dialog) and pd.notna(global_sales_q95)
+                                      and sales_mean_this_dialog >= global_sales_q95)
+
+        # макс. громкость SALES в диалоге — для категориальной колонки и «пиков»
+        max_loud_sales = float(sales_loud.max()) if sales_loud.size > 0 else np.nan
         loud_cnt = 0
         if not loud_df.empty:
             loud_cnt = int((loud_df["dialog_id"].astype(str) == str(did)).sum())
@@ -356,8 +418,14 @@ def make_report(
             rows_count=int(len(sub)),
             dialog_text=build_dialog_text_block(sub),
             loud_peaks=loud_cnt,
-            loud_cat=loud_to_category(max_loud),
-            loud_scaled=(max_loud * LOUD_SCALE if (isinstance(max_loud, float) and not np.isnan(max_loud)) else np.nan),
+            loud_cat=loud_to_category(max_loud_sales),
+            loud_scaled=(max_loud_sales * LOUD_SCALE if (isinstance(max_loud_sales, float) and not np.isnan(max_loud_sales)) else np.nan),
+
+            # новые флаги
+            client_peak_flag=client_peak_flag,
+            sales_peak_flag=sales_peak_flag,
+            sales_quieter_95_global=sales_quieter_95_global,
+            sales_louder_95_global=sales_louder_95_global,
         )
 
         for c in present_criteria:
@@ -388,7 +456,7 @@ def make_report(
     fmt_num    = wb.add_format({"num_format": "0"})
     fmt_dur    = wb.add_format({"num_format": "0.0"})
     fmt_int    = wb.add_format({"num_format": "0"})
-    fmt_hlink  = wb.add_format({"font_color": "blue", "underline": 1})
+    fmt_pct    = wb.add_format({"num_format": "0.0%"})
 
     # ===== Summary =====
     ws = wb.add_worksheet("Summary")
@@ -398,12 +466,11 @@ def make_report(
     ws.write(r, 0, "Сводка", fmt_header); r += 1
     ws.write(r, 0, "Диалогов:", fmt_bold);        ws.write_number(r, 1, int(total_dialogs), fmt_num); r += 1
     ws.write(r, 0, "Суммарно, часов:", fmt_bold); ws.write_number(r, 1, round(total_hours, 1), fmt_dur); r += 1
-    # порог громких пиков (в x1000 для консистентности с таблицей)
-    if loud_threshold is not None:
-        ws.write(r, 0, "Порог «громко» (95-й перц.), ×1000", fmt_bold)
-        ws.write_number(r, 1, loud_threshold * LOUD_SCALE, fmt_int); r += 1
+    if not math.isnan(global_sales_q05):
+        ws.write(r, 0, "Глобальный 5-й перц. (ср. SALES), ×1000", fmt_bold); ws.write_number(r, 1, global_sales_q05 * LOUD_SCALE, fmt_int); r += 1
+    if not math.isnan(global_sales_q95):
+        ws.write(r, 0, "Глобальный 95-й перц. (ср. SALES), ×1000", fmt_bold); ws.write_number(r, 1, global_sales_q95 * LOUD_SCALE, fmt_int); r += 1
 
-    # Темы
     ws.write(r, 0, "Диалоги по темам", fmt_header); r += 1
     ws.write(r, 0, "Тема", fmt_bold); ws.write(r, 1, "Кол-во", fmt_bold); r += 1
     for rec in theme_counts.itertuples(index=False):
@@ -425,6 +492,10 @@ def make_report(
         ("loud_peaks",     "Громкие реплики (шт)"),
         ("loud_scaled",    "Громк.×1000"),
         ("loud_cat",       "Громкость (кат.)"),
+        ("client_peak_flag",        "Повышение (CLIENT)"),
+        ("sales_peak_flag",         "Повышение (SALES)"),
+        ("sales_quieter_95_global", "SALES тише 95% всех"),
+        ("sales_louder_95_global",  "SALES громче 95% всех"),
         ("_expand",        "▼"),
     ]
     crit_headers = [(c, ru) for c, ru in CRITERIA_LABELS if c in summary.columns]
@@ -436,7 +507,10 @@ def make_report(
     col_widths = {
         "dialog_id": 36, "Класс темы": 12, "Тема": 28, "Файл": 28, "Статус": 10,
         "Длит., с": 10, "Строк": 8, "Громкие реплики (шт)": 12, "Громк.×1000": 12,
-        "Громкость (кат.)": 16, "▼": 4
+        "Громкость (кат.)": 16,
+        "Повышение (CLIENT)": 16, "Повышение (SALES)": 16,
+        "SALES тише 95% всех": 18, "SALES громче 95% всех": 20,
+        "▼": 4
     }
     for idx, (_key, title) in enumerate(headers):
         ws.set_column(idx, idx, col_widths.get(title, 18), fmt_wrap if title in ("Тема",) else fmt_norm)
@@ -459,24 +533,31 @@ def make_report(
             int(rsum.get("loud_peaks", 0)),
             (float(rsum.get("loud_scaled")) if pd.notna(rsum.get("loud_scaled")) else np.nan),
             _as_str(rsum.get("loud_cat", "")),
+            int(rsum.get("client_peak_flag", 0)),
+            int(rsum.get("sales_peak_flag", 0)),
+            int(rsum.get("sales_quieter_95_global", 0)),
+            int(rsum.get("sales_louder_95_global", 0)),
         ]
 
         for c, v in enumerate(values):
             title = headers[c][1]
             if title == "Длит., с":
                 ws.write_number(row, c, float(v), fmt_dur)
-            elif title in ("Строк", "Громкие реплики (шт)"):
-                ws.write_number(row, c, int(v), fmt_int)
-            elif title == "Громк.×1000":
-                if isinstance(v, float) and math.isnan(v):
-                    ws.write(row, c, "", fmt_norm)
+            elif title in ("Строк", "Громкие реплики (шт)", "Громк.×1000",
+                           "Повышение (CLIENT)", "Повышение (SALES)",
+                           "SALES тише 95% всех", "SALES громче 95% всех"):
+                if title == "Громк.×1000":
+                    if isinstance(v, float) and math.isnan(v):
+                        ws.write(row, c, "", fmt_norm)
+                    else:
+                        ws.write_number(row, c, int(round(float(v))), fmt_int)
                 else:
-                    ws.write_number(row, c, float(v), fmt_int)
+                    ws.write_number(row, c, int(v), fmt_int)
             else:
                 ws.write(row, c, v, fmt_wrap if title in ("Тема",) else fmt_norm)
 
-        # гиперссылка для разворота
-        ws.write_url(row, len(base_headers)-1, f"internal:'Summary'!A{row+2}", fmt_hlink, string="↓")
+        # колонка «▼» — ссылка для разворота
+        ws.write_url(row, len(base_headers)-1, f"internal:'Summary'!A{row+2}", fmt_bold, string="↓")
 
         # критерии
         col_idx = len(base_headers)
@@ -484,9 +565,10 @@ def make_report(
             ws.write(row, col_idx, _as_str(rsum.get(key, "")), fmt_wrap)
             col_idx += 1
 
+        # компактная высота основной строки
         ws.set_row(row, 12)
 
-        # скрытая строка "Полный текст"
+        # скрытая строка «Полный текст» с высотой по содержимому
         detail_row = row + 1
         ws.write(detail_row, 0, "Полный текст:", fmt_bold)
         est_h = estimate_merged_row_height(rsum["dialog_text"], total_chars_width, line_height_pt=14.0)
@@ -516,37 +598,19 @@ def make_report(
 
     crit_df = pd.DataFrame(stat_rows).sort_values("Доля", ascending=False)
 
-    hfmt = wb.add_format({"bold": True, "bg_color": "#F2F2F2"})
-    pfmt = wb.add_format({"num_format": "0.0%"})
-    nfmt = wb.add_format({"num_format": "0"})
-    wfmt = wb.add_format({"valign": "top"})
-
-    crit_sheet.write(0, 0, "Критерий", hfmt)
-    crit_sheet.write(0, 1, "Диалогов", hfmt)
-    crit_sheet.write(0, 2, "Доля", hfmt)
+    crit_sheet.write(0, 0, "Критерий", fmt_header)
+    crit_sheet.write(0, 1, "Диалогов", fmt_header)
+    crit_sheet.write(0, 2, "Доля", fmt_header)
 
     for i, rec in enumerate(crit_df.itertuples(index=False), start=1):
-        crit_sheet.write(i, 0, rec.Критерий, wfmt)
-        crit_sheet.write_number(i, 1, int(rec.Диалогов), nfmt)
-        crit_sheet.write_number(i, 2, float(rec.Доля), pfmt)
+        crit_sheet.write(i, 0, rec.Критерий, fmt_norm)
+        crit_sheet.write_number(i, 1, int(rec.Диалогов), fmt_num)
+        crit_sheet.write_number(i, 2, float(rec.Доля), fmt_pct)
 
-    crit_sheet.set_column(0, 0, 40, wfmt)
-    crit_sheet.set_column(1, 1, 12, nfmt)
-    crit_sheet.set_column(2, 2, 12, pfmt)
+    crit_sheet.set_column(0, 0, 40, fmt_norm)
+    crit_sheet.set_column(1, 1, 12, fmt_num)
+    crit_sheet.set_column(2, 2, 12, fmt_pct)
     crit_sheet.freeze_panes(1, 0)
-
-    last = min(10, len(crit_df))
-    if last > 0:
-        ch = wb.add_chart({"type": "column"})
-        ch.add_series({
-            "name": "Доля диалогов с признаком",
-            "categories": ["Критерии%", 1, 0, last, 0],
-            "values":     ["Критерии%", 1, 2, last, 2],
-            "data_labels": {"value": True},
-        })
-        ch.set_title({"name": "Критерии: доля диалогов (топ-10)"})
-        ch.set_y_axis({"num_format": "0%", "major_gridlines": {"visible": False}})
-        crit_sheet.insert_chart(1, 4, ch, {"x_scale": 1.2, "y_scale": 1.05})
 
     # ===== Лексика =====
     def build_lexicon_table(colname: str) -> pd.DataFrame:
@@ -566,16 +630,16 @@ def make_report(
         sheet_name = nice[:31]
         wsx = wb.add_worksheet(sheet_name)
         wsx.set_default_row(13)
-        hfmt2 = wb.add_format({"bold": True, "bg_color": "#F2F2F2"})
-        nfmt2 = wb.add_format({"num_format": "0"})
-        wfmt2 = wb.add_format({"valign": "top"})
-        wsx.write(0, 0, "Слово/фраза", hfmt2)
-        wsx.write(0, 1, "Частота", hfmt2)
+        hfmt = wb.add_format({"bold": True, "bg_color": "#F2F2F2"})
+        nfmt = wb.add_format({"num_format": "0"})
+        wfmt = wb.add_format({"valign": "top"})
+        wsx.write(0, 0, "Слово/фраза", hfmt)
+        wsx.write(0, 1, "Частота", hfmt)
         for i, rr in enumerate(tbl.itertuples(index=False), start=1):
-            wsx.write(i, 0, rr.phrase, wfmt2)
-            wsx.write_number(i, 1, int(rr.freq), nfmt2)
-        wsx.set_column(0, 0, 50, wfmt2)
-        wsx.set_column(1, 1, 12, nfmt2)
+            wsx.write(i, 0, rr.phrase, wfmt)
+            wsx.write_number(i, 1, int(rr.freq), nfmt)
+        wsx.set_column(0, 0, 50, wfmt)
+        wsx.set_column(1, 1, 12, nfmt)
         wsx.freeze_panes(1, 0)
         last = min(10, len(tbl))
         if last > 0:
@@ -596,7 +660,7 @@ def make_report(
         wsl.set_default_row(13)
         headers_ru = ["dialog_id", "Спикер", "Начало", "Конец", "Громкость", "Громк.×1000", "Категория", "Текст (сокр.)"]
         hfmt = wb.add_format({"bold": True, "bg_color": "#F2F2F2"})
-        nfmt = wb.add_format({"num_format": "0.0"})
+        nfmt = wb.add_format({"num_format": "0.000"})
         ifmt = wb.add_format({"num_format": "0"})
         wfmt = wb.add_format({"valign": "top"})
         wwrap = wb.add_format({"text_wrap": True, "valign": "top"})
