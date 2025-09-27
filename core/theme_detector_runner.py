@@ -23,6 +23,7 @@ check_list = [
     'вопрос по шинам',
     'вопрос по колеса',
     'вопрос по дискам',
+    'вопрос по заказу',
     'вопрос по возврату',
     'вопрос по аккумулятору',
     'вопрос по шиномонтажу',
@@ -37,13 +38,17 @@ def check_theme(theme):
     if 'жалоба' in theme.lower():
         return True
 
-    phrases = [phrase.strip() for phrase in theme.split(',')]
+    phrases = [phrase.strip() for phrase in theme.split(', ')]
 
+    cleaned = ''
     for phrase in phrases:
-        if phrase not in check_list:
-            return False
+        if phrase in check_list:
+            if cleaned != '':
+                cleaned = cleaned + ' ' + phrase
+            else:
+                cleaned = phrase
 
-    return True
+    return cleaned
 
 if __name__ == "__main__":
     dialogs = audio_dialog_repository.find_all()
@@ -54,9 +59,13 @@ if __name__ == "__main__":
 
     def worker(dialog):
         try:
+            if dialog.theme is not None and dialog.theme != '':
+                return dialog.id, None
             dialog_text = print_dialog_to_text(dialog.id)
             theme = resolve_theme(dialog_text)
-            if not check_theme(theme):
+            print(theme)
+            theme = check_theme(theme)
+            if theme == '':
                 return dialog.id, None
 
             theme = (theme or "").strip()

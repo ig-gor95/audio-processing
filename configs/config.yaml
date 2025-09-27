@@ -11,7 +11,8 @@ diarize:
 
 saiga:
   url: http://localhost:11434/v1
-  model-name: qwen2.5:7b-instruct
+#  model-name: qwen2.5:7b-instruct
+  model-name: gemma3:12b
   api-key: ollama
 
 db:
