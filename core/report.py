@@ -32,7 +32,7 @@ SPEAKER_COL = "detected_speaker_id"
 ALT_SPEAKER_COL = "speaker_id"
 ROWNUM_COL = "row_num"
 START_COL, END_COL = "start", "end"
-FILE_COL, STATUS_COL, DUR_COL = "file_name", "status", "duration"
+FILE_COL, DUR_COL = "file_name", "duration"
 LOUD_COL = "mean_loudness"
 
 SALES_VALUE = "SALES"
@@ -284,7 +284,7 @@ def make_report(
     _SPEAK  = pick_col(SPEAKER_COL) or pick_col(ALT_SPEAKER_COL)
     _ROWNUM = pick_col(ROWNUM_COL)
     _START, _END = pick_col(START_COL), pick_col(END_COL)
-    _FILE, _STATUS, _DUR = pick_col(FILE_COL), pick_col(STATUS_COL), pick_col(DUR_COL)
+    _FILE, _DUR = pick_col(FILE_COL), pick_col(DUR_COL)
     _LOUD = pick_col(LOUD_COL)
 
     ren = {}
@@ -295,7 +295,6 @@ def make_report(
     if _START  and _START  != START_COL:   ren[_START]  = START_COL
     if _END    and _END    != END_COL:     ren[_END]    = END_COL
     if _FILE   and _FILE   != FILE_COL:    ren[_FILE]   = FILE_COL
-    if _STATUS and _STATUS != STATUS_COL:  ren[_STATUS] = STATUS_COL
     if _DUR    and _DUR    != DUR_COL:     ren[_DUR]    = DUR_COL
     if _LOUD   and _LOUD   != LOUD_COL:    ren[_LOUD]   = LOUD_COL
     if ren:
@@ -391,10 +390,6 @@ def make_report(
             _series_loud(sub, SPEAKER_2),
         ])
 
-        # локальные всплески (внутри диалога)
-        client_peak_flag = _local_peak_flag(client_loud)
-        sales_peak_flag  = _local_peak_flag(sales_loud)
-
         # глобальные флаги по среднему SALES в данном диалоге
         sales_mean_this_dialog = float(sales_loud.mean()) if sales_loud.size > 0 else np.nan
         sales_quieter_95_global = int(pd.notna(sales_mean_this_dialog) and pd.notna(global_sales_q05)
@@ -413,17 +408,11 @@ def make_report(
             theme_class=theme_class,
             theme=theme_joined,
             file_name=_as_str(sub.get(FILE_COL, pd.Series([""])).iloc[0]) if FILE_COL in sub.columns else "",
-            status=_as_str(sub.get(STATUS_COL, pd.Series([""])).iloc[0]) if STATUS_COL in sub.columns else "",
             duration_sec=duration,
             rows_count=int(len(sub)),
             dialog_text=build_dialog_text_block(sub),
-            loud_peaks=loud_cnt,
-            loud_cat=loud_to_category(max_loud_sales),
-            loud_scaled=(max_loud_sales * LOUD_SCALE if (isinstance(max_loud_sales, float) and not np.isnan(max_loud_sales)) else np.nan),
 
             # новые флаги
-            client_peak_flag=client_peak_flag,
-            sales_peak_flag=sales_peak_flag,
             sales_quieter_95_global=sales_quieter_95_global,
             sales_louder_95_global=sales_louder_95_global,
         )
@@ -486,14 +475,8 @@ def make_report(
         ("theme_class",    "Класс темы"),
         ("theme",          "Тема"),
         ("file_name",      "Файл"),
-        ("status",         "Статус"),
         ("duration_sec",   "Длит., с"),
         ("rows_count",     "Строк"),
-        ("loud_peaks",     "Громкие реплики (шт)"),
-        ("loud_scaled",    "Громк.×1000"),
-        ("loud_cat",       "Громкость (кат.)"),
-        ("client_peak_flag",        "Повышение (CLIENT)"),
-        ("sales_peak_flag",         "Повышение (SALES)"),
         ("sales_quieter_95_global", "SALES тише 95% всех"),
         ("sales_louder_95_global",  "SALES громче 95% всех"),
         ("_expand",        "▼"),
@@ -527,14 +510,8 @@ def make_report(
             rsum["theme_class"],
             rsum["theme"],
             rsum["file_name"],
-            rsum["status"],
             float(rsum["duration_sec"]) if pd.notna(rsum["duration_sec"]) else 0.0,
             int(rsum["rows_count"]),
-            int(rsum.get("loud_peaks", 0)),
-            (float(rsum.get("loud_scaled")) if pd.notna(rsum.get("loud_scaled")) else np.nan),
-            _as_str(rsum.get("loud_cat", "")),
-            int(rsum.get("client_peak_flag", 0)),
-            int(rsum.get("sales_peak_flag", 0)),
             int(rsum.get("sales_quieter_95_global", 0)),
             int(rsum.get("sales_louder_95_global", 0)),
         ]
