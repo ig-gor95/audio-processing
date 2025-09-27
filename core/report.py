@@ -28,8 +28,8 @@ except Exception:
 THEME_COL = "theme"
 TEXT_COL = "row_text"
 DIALOG_COL = "audio_dialog_fk_id"
-SPEAKER_COL = "detected_speaker_id"
-ALT_SPEAKER_COL = "speaker_id"
+SPEAKER_COL = "speaker_id"
+ALT_SPEAKER_COL = "detected_speaker_id"
 ROWNUM_COL = "row_num"
 START_COL, END_COL = "start", "end"
 FILE_COL, DUR_COL = "file_name", "duration"
@@ -47,9 +47,9 @@ LOUD_SCALE = 1000.0  # 0.431 -> 431
 # ---- Критерии ----
 CRITERIA_LABELS: List[Tuple[str, str]] = [
     ("greeting_phrase",          "Приветствие"),
-    ("telling_name_phrases",     "Обращение по имени"),
-    ("found_name",               "Назвал имя"),
-    ("ongoing_sale",             "Идёт продажа"),
+    ("telling_name_phrases",     "Назвал свое имя"),
+    ("found_name",               "Имя"),
+    ("ongoing_sale",             "Доп. продажи"),
     ("order_offer",              "Предложение заказа"),
     ("order_processing",         "Оформление заказа"),
     ("order_resume",             "Подведение итогов"),
@@ -455,10 +455,6 @@ def make_report(
     ws.write(r, 0, "Сводка", fmt_header); r += 1
     ws.write(r, 0, "Диалогов:", fmt_bold);        ws.write_number(r, 1, int(total_dialogs), fmt_num); r += 1
     ws.write(r, 0, "Суммарно, часов:", fmt_bold); ws.write_number(r, 1, round(total_hours, 1), fmt_dur); r += 1
-    if not math.isnan(global_sales_q05):
-        ws.write(r, 0, "Глобальный 5-й перц. (ср. SALES), ×1000", fmt_bold); ws.write_number(r, 1, global_sales_q05 * LOUD_SCALE, fmt_int); r += 1
-    if not math.isnan(global_sales_q95):
-        ws.write(r, 0, "Глобальный 95-й перц. (ср. SALES), ×1000", fmt_bold); ws.write_number(r, 1, global_sales_q95 * LOUD_SCALE, fmt_int); r += 1
 
     ws.write(r, 0, "Диалоги по темам", fmt_header); r += 1
     ws.write(r, 0, "Тема", fmt_bold); ws.write(r, 1, "Кол-во", fmt_bold); r += 1
@@ -630,43 +626,6 @@ def make_report(
             ch.set_title({"name": f"{nice}: Топ-{min(10, top_n)}"})
             ch.set_y_axis({"major_gridlines": {"visible": False}})
             wsx.insert_chart(1, 3, ch, {"x_scale": 1.2, "y_scale": 1.05})
-
-    # ===== Лист «Громкость» =====
-    if not loud_df.empty:
-        wsl = wb.add_worksheet("Громкость")
-        wsl.set_default_row(13)
-        headers_ru = ["dialog_id", "Спикер", "Начало", "Конец", "Громкость", "Громк.×1000", "Категория", "Текст (сокр.)"]
-        hfmt = wb.add_format({"bold": True, "bg_color": "#F2F2F2"})
-        nfmt = wb.add_format({"num_format": "0.000"})
-        ifmt = wb.add_format({"num_format": "0"})
-        wfmt = wb.add_format({"valign": "top"})
-        wwrap = wb.add_format({"text_wrap": True, "valign": "top"})
-        for j, h in enumerate(headers_ru):
-            wsl.write(0, j, h, hfmt)
-        for i, (_, rr_) in enumerate(loud_df.iterrows(), start=1):
-            v = rr_.get("__loud", rr_.get(LOUD_COL))
-            v = float(v) if pd.notna(v) else np.nan
-            wsl.write(i, 0, _as_str(rr_["dialog_id"]), wfmt)
-            wsl.write(i, 1, _as_str(rr_.get(SPEAKER_COL, "")), wfmt)
-            wsl.write(i, 2, _as_str(rr_.get(START_COL, "")), wfmt)
-            wsl.write(i, 3, _as_str(rr_.get(END_COL, "")), wfmt)
-            if pd.notna(v):
-                wsl.write_number(i, 4, v, nfmt)
-                wsl.write_number(i, 5, v * LOUD_SCALE, ifmt)
-                wsl.write(i, 6, loud_to_category(v), wfmt)
-            else:
-                wsl.write(i, 4, "", wfmt)
-                wsl.write(i, 5, "", wfmt)
-                wsl.write(i, 6, "", wfmt)
-            wsl.write(i, 7, _as_str(rr_.get("row_text_short", "")), wwrap)
-        wsl.set_column(0, 0, 36, wfmt)
-        wsl.set_column(1, 1, 10, wfmt)
-        wsl.set_column(2, 3, 18, wfmt)
-        wsl.set_column(4, 4, 10, nfmt)
-        wsl.set_column(5, 5, 10, ifmt)
-        wsl.set_column(6, 6, 14, wfmt)
-        wsl.set_column(7, 7, 60, wwrap)
-        wsl.freeze_panes(1, 0)
 
     wb.close()
     return out_path
