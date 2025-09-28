@@ -18,8 +18,8 @@ if __name__ == "__main__":
     dialog_criteria_repository = DialogCriteriaRepository()
     sales_detector = SalesDetector()
     counter = 0
-    # dialogs = audio_dialog_repository.find_all()
-    dialogs = [audio_dialog_repository.find_by_id(UUID('787300cb-1c6d-4fc4-8025-c0e582bebfd0'))]
+    dialogs = audio_dialog_repository.find_all()
+    # dialogs = [audio_dialog_repository.find_by_id(UUID('787300cb-1c6d-4fc4-8025-c0e582bebfd0'))]
     total = len(dialogs)
 
     for dialog in dialogs:
@@ -38,11 +38,11 @@ if __name__ == "__main__":
         # for row in dialog_rows:
         #     if row.speaker_id in ['CLIENT', 'SALES']:
         #         no_id = False
-        if not no_id:
-            for row in dialog_rows:
-                print(f'{row.speaker_id}: {row.row_text}')
-            print(f'{counter} of {total}')
-            print('asd')
+        # if not no_id:
+        #     for row in dialog_rows:
+        #         print(f'{row.speaker_id}: {row.row_text}')
+        #     print(f'{counter} of {total}')
+        #     print('asd')
         if not no_id:
             for row in dialog_rows:
                 dialog_rows_repository.update_speaker_id_by_id(row.id, row.speaker_id)
