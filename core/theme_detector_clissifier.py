@@ -12,6 +12,7 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any
+from uuid import UUID
 
 import numpy as np
 from joblib import load
@@ -118,12 +119,6 @@ def _chunks(seq, size):
         yield seq[i:i+size]
 
 def main():
-    # ap = argparse.ArgumentParser()
-    # ap.add_argument("--model", type=str, required=True, help="Путь к сохранённой модели (.joblib)")
-    # ap.add_argument("--batch", type=int, default=128, help="Размер батча для предсказаний")
-    # ap.add_argument("--max-workers", type=int, default=1, help="Потоки для записи в БД")
-    # args = ap.parse_args()
-
     # 1) загрузка модели
     logger.info(f"Loading model: dialog_tagger.joblib")
     model = load('dialog_tagger.joblib')
