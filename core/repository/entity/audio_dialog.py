@@ -2,7 +2,7 @@ from uuid import UUID, uuid4
 from datetime import datetime
 from enum import Enum
 from sqlalchemy import Column, String, Float, DateTime, Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -24,6 +24,7 @@ class AudioDialog(Base):
     theme = Column(String(300))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    llm_data_short = Column(JSONB, default=dict)
 
     def __repr__(self):
         return f"<AudioDialog(id={self.id}, filename='{self.file_name}', status={self.status})>"
