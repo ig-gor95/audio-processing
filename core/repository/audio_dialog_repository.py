@@ -76,6 +76,17 @@ class AudioDialogRepository:
             if dialog:
                 dialog.theme = theme
 
+    def update_llm_data(self, file_id: str, new_data: dict) -> None:
+        """Update LLM metadata in JSONB column."""
+        with self._get_session() as session:
+            dialog = session.query(AudioDialog).get(file_id)
+            if dialog:
+                current = dialog.llm_data_short or {}
+                current.update(new_data)  # аккуратное слияние
+                dialog.llm_data_short = current
+                session.add(dialog)
+                session.commit()
+
     def find_all(self) -> List[AudioDialog]:
         with self._get_session() as session:
             return session.query(AudioDialog).all()
