@@ -106,5 +106,5 @@ class AudioDialogRepository:
             from dialog_criterias t1
             join dialog_rows t2 on t1.dialog_row_fk_id::uuid = t2.id
             left join audio_dialogs t3 on t2.audio_dialog_fk_id = t3.id
-            where t3.updated_at >= '2025-09-03'
+            where llm_data_short is not null
             """, self.engine)
