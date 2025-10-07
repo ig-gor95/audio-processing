@@ -23,7 +23,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 # ====== CONFIG ======
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8146216531:AAGkvbhLkI65FkKaoiVH_rvzgqdknq64M_Q")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
 # Whisper
 OPENAI_STT_MODEL = "whisper-1"
