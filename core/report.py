@@ -72,8 +72,9 @@ MAP_OWNER = {"client": "клиент", "sales": "оператор"}
 _SPLIT_RE = re.compile(r"[;,|/\\]+")
 _TRIM = " \"'“”«»·-–—"
 
-CH_COL_SIZE = {"width": 480, "height": 300}
+CH_COL_SIZE = {"width": 479, "height": 300}
 CH_COL_SETTING = {"x_offset": 0, "y_offset": 0, "object_position": 1}
+
 
 def make_unique_columns(cols: pd.Index) -> pd.Index:
     seen: Dict[str, int] = {}
@@ -292,6 +293,7 @@ def extract_phrases(series: pd.Series) -> List[str]:
                 out.append(p2)
     return out
 
+
 def aggregate_phrases_sales_only(sub: pd.DataFrame, colname: str) -> str:
     spk_col = detect_speaker_col(sub)
     if spk_col is None or colname not in sub.columns:
@@ -302,6 +304,7 @@ def aggregate_phrases_sales_only(sub: pd.DataFrame, colname: str) -> str:
         return ""
     uniq = list(dict.fromkeys(vals))
     return ", ".join(uniq)
+
 
 def aggregate_phrases_all_speakers(sub: pd.DataFrame, colname: str) -> str:
     if colname not in sub.columns:
@@ -573,7 +576,15 @@ def aggregate_per_dialog(df: pd.DataFrame) -> pd.DataFrame:
             llm_addon_accepted_text=_mode_nonempty(sub.get("llm_addon_accepted_text"), {"да", "нет"}),
             llm_addon_items=_join_items_from_json(sub.get("llm_addon_items_json", pd.Series([], dtype=str))),
         ))
-
+        sales_name, client_name = extract_names_from_sales_strict(sub)
+        sales_name_val = sales_name
+        if len(sales_name) > 1:
+            sales_name_val = None
+        client_name_val = client_name
+        if len(client_name) > 1:
+            client_name_val = None
+        base["named_self_sales"] = sales_name_val  # «Назвал имя» по правилам
+        base["addressed_by_name_sales"] = client_name_val
         # Критерии:
         #   - Мат — по всем спикерам
         #   - Остальное — только SALES (если колонок нет — вернутся пустые строки)
@@ -747,7 +758,7 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
         """Выводит DataFrame с чёрными рамками у каждой ячейки.
            Если в df ровно 2 колонки — объединяет 2-ю и 3-ю ячейки каждой строки."""
         fmt_hdr_b = wb.add_format({"bold": True, "bg_color": "#F2F2F2", "border": 1})
-        fmt_num_b = wb.add_format({"num_format": "0", "border": 1})
+        fmt_num_b = wb.add_format({"num_format": "0.00", "border": 1})
         fmt_pct_b = wb.add_format({"num_format": "0.0%", "border": 1})
         fmt_cell_b = wb.add_format({"border": 1})
         fmt_wrap_b = wb.add_format({"border": 1, "text_wrap": True, "valign": "top"})
@@ -875,7 +886,7 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
     kpi = pd.DataFrame([
         {"Метрика": "Назначен шаг (next_set)", "Значение_%": rates.get("Назначен шаг (next_set)", 0.0),
          "Примечание": "Фиксация следующего шага."},
-        {"Метрика": "Есть wrap-up", "Значение_%": rates.get("Есть резюме (wrap_up)", 0.0),
+        {"Метрика": "Есть wrap-up", "Значение_%": rates.get("Есть резюме (подведение итогов)", 0.0),
          "Примечание": "Подтверждение условий."},
         {"Метрика": "Есть возражение", "Значение_%": rates.get("Есть возражение", 0.0),
          "Примечание": "Наличие возражения."},
@@ -904,7 +915,7 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
                              title="Распределение: Сезон (LLM)")
     insert_combo_count_pct("Сезон: кол-во + доля", st_s, en_s, 0, 1, 2, below_row=en_s + 1, left_col=8)
 
-    row = max(en_i + 8, en_c + 8, en_s + 8) + 2
+    row = max(en_i + 8, en_c + 10, en_s + 10) + 2
 
     # ===== Тип/Статус возражения — доли считаем от ВСЕХ ВОЗРАЖЕНИЙ
     filt_obj = summary["llm_obj_detected"].fillna(0).astype(int) > 0
@@ -930,10 +941,11 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
     obj_quality = (tmp.groupby("llm_intent", dropna=False)
                    .agg(Доля_возражений=("obj", "mean"), Количество_handling=("handling_cnt", "sum"))
                    .reset_index().rename(columns={"llm_intent": "Намерение"}))
-    st_q, en_q = write_table(obj_quality, row, 8, title="Возражения: доля и качество (handling — количеством)")
+    st_q, en_q = write_table(obj_quality, row, 8,
+                             title="Возражения: доля и качество (Разрешений возражений — количеством)")
     ch_col = wb.add_chart({"type": "column"})
     ch_col.add_series({
-        "name": "Количество handling",
+        "name": "Количество разрешений возражений",
         "categories": ["Summary", st_q, 0, en_q, 0],
         "values": ["Summary", st_q, 2, en_q, 2],
     })
@@ -950,7 +962,7 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
     ch_col.set_size({"width": 570, "height": 300})
     ws.insert_chart(en_q + 1, 8, ch_col, CH_COL_SETTING)
 
-    row = max(en_t + 8, en_ts + 8, en_q + 8) + 2
+    row = max(en_t + 10, en_ts + 10, en_q + 10) + 2
 
     # ===== Сгруппированные действия next step (исправленный график: категории=0, значения=1)
     def _normalize_action(x: str) -> str:
@@ -977,7 +989,7 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
         str)
     actions_g = actions_ser.map(_normalize_action).value_counts().rename_axis("Действие (группа)").reset_index(
         name="Кол-во")
-    st_ng, en_ng = write_table(actions_g, row, 0, title="Сгруппированные действия next step")
+    st_ng, en_ng = write_table(actions_g, row, 0, title="Сгруппированные действия следующих шагов")
     ch = wb.add_chart({"type": "column"})
     ch.add_series({
         "name": "Кол-во",
@@ -991,8 +1003,8 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
     # Доля next step по намерениям (исправленный график)
     next_by_intent = (summary.assign(n=summary["llm_next_set"].fillna(0).astype(int))
                       .groupby("llm_intent", dropna=False)["n"].mean()
-                      .reset_index().rename(columns={"llm_intent": "Намерение", "n": "Доля next_set"}))
-    st_ni, en_ni = write_table(next_by_intent, row, 4, title="Доля next step по намерениям")
+                      .reset_index().rename(columns={"llm_intent": "Намерение", "n": "Доля следующих шагов"}))
+    st_ni, en_ni = write_table(next_by_intent, row, 4, title="Доля назначенных следующих шагов по намерениям")
     ch2 = wb.add_chart({"type": "column"})
     ch2.add_series({
         "name": "Доля next_set",
@@ -1004,12 +1016,12 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
     ch2.set_size(CH_COL_SIZE)
     ws.insert_chart(en_ni + 1, 4, ch2, CH_COL_SETTING)
 
-    row = max(en_ng + 8, en_ni + 8) + 2
+    row = max(en_ng + 10, en_ni + 10) + 2
 
     # Доля wrap-up по намерениям (исправленный график; без тотала)
     wrap_by_intent = (summary.assign(w=summary["llm_wrap_up"].fillna(0).astype(int))
                       .groupby("llm_intent", dropna=False)["w"].mean()
-                      .reset_index().rename(columns={"llm_intent": "Намерение", "w": "Доля wrap-up"}))
+                      .reset_index().rename(columns={"llm_intent": "Намерение", "w": "Доля подведений итогов"}))
     st_wi, en_wi = write_table(wrap_by_intent, row, 4, title="Доля wrap-up по намерениям")
     # ch3 = wb.add_chart({"type": "column"})
     # ch3.add_series({
@@ -1042,8 +1054,8 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
 
     # ===== Корреляции: «Сезон указан» — по НЕПУСТЫМ строкам
     bin_cols = [
-        ("Next step зафиксирован", "llm_next_set"),
-        ("Сделан wrap-up", "llm_wrap_up"),
+        ("Следующий шаг зафиксирован", "llm_next_set"),
+        ("Сделано подведение итогов", "llm_wrap_up"),
         ("Есть возражение", "llm_obj_detected"),
         ("Признали возражение (ack)", "llm_obj_ack"),
         ("Предложили решение (sol)", "llm_obj_sol"),
@@ -1109,8 +1121,8 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
     # ===== Критерии: доля и количество
     crit_map = [
         ("Приветствие", "greeting_phrase_sales"),
-        ("Назвал имя", "found_name_sales"),
-        ("Обращение по имени", "telling_name_phrases_sales"),
+        ("Сейлз представился", "named_self_sales"),
+        ("Обращение по имени", "addressed_by_name_sales"),
         ("Слова-паразиты", "parasite_words_sales"),
         ("Вход в ожидание", "await_requests_sales"),
         ("Стоп-слова", "stop_words_sales"),
@@ -1118,7 +1130,7 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
         ("Выход из ожидания", "await_requests_exit_sales"),
         ("Режим работы", "working_hours_sales"),
         ("Непроф. фразы", "non_professional_phrases_sales"),
-        ("Мат", "swear_words_all"),
+        ("Мат (учтены не только у сейлзов)", "swear_words_all"),
         ("Сленг", "slang_sales"),
     ]
     rows = []
@@ -1153,9 +1165,10 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
             vc = pd.DataFrame({"Фраза": [], "Кол-во": []})
         write_table(vc, row, left, title=title)
 
-    top_phrases(["parasite_words_sales","parasite_words","interjections_sales","interjections"], "Топ: слова-паразиты", 0)
-    top_phrases(["slang_sales"], "Топ: сленг", 4)
-    top_phrases(["inappropriate_phrases_sales","non_professional_phrases_sales",], "Топ: неприемлемые/непроф.", 8)
+    top_phrases(["parasite_words_sales", "parasite_words", "interjections_sales", "interjections"],
+                "Топ: слова-паразиты", 0)
+    top_phrases(["inappropriate_phrases_sales"], "Топ: неприемлемые фразы", 4)
+    top_phrases(["non_professional_phrases_sales", ], "Топ: непрофессиональные фразы", 8)
 
     ws.freeze_panes(1, 0)
     ws.set_paper(9)
@@ -1208,12 +1221,12 @@ def write_dialogs_sheet(wb, summary: pd.DataFrame):
         ("llm_addon_accepted_text", "Допродажа принята"),
         ("llm_addon_items", "Допродажа: позиции"),
 
-        ("swear_words", "Мат"),
-        ("slang", "Сленг"),
-        ("inappropriate_phrases", "Неприемлемые"),
-        ("non_professional_phrases", "Непроф. фразы"),
-        ("await_requests", "Вход в ожидание"),
-        ("await_requests_exit", "Выход из ожидания"),
+        ("swear_words_all", "Мат"),
+        ("slang_sales", "Сленг"),
+        ("inappropriate_phrases_sales", "Неприемлемые"),
+        ("non_professional_phrases_sales", "Непроф. фразы"),
+        ("await_requests_sales", "Вход в ожидание"),
+        ("await_requests_exit_sales", "Выход из ожидания"),
 
         ("duration_sec", "Длит., с"),
         ("rows_count", "Строк"),
