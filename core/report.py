@@ -578,10 +578,10 @@ def aggregate_per_dialog(df: pd.DataFrame) -> pd.DataFrame:
         ))
         sales_name, client_name = extract_names_from_sales_strict(sub)
         sales_name_val = sales_name
-        if len(sales_name) > 1:
+        if len(sales_name) < 2:
             sales_name_val = None
         client_name_val = client_name
-        if len(client_name) > 1:
+        if len(client_name) < 2:
             client_name_val = None
         base["named_self_sales"] = sales_name_val  # «Назвал имя» по правилам
         base["addressed_by_name_sales"] = client_name_val
