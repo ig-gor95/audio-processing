@@ -14,7 +14,7 @@
 import re
 import json
 import textwrap
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Iterable
 
 import numpy as np
 import pandas as pd
@@ -75,6 +75,91 @@ _TRIM = " \"'“”«»·-–—"
 CH_COL_SIZE = {"width": 479, "height": 300}
 CH_COL_SETTING = {"x_offset": 0, "y_offset": 0, "object_position": 1}
 
+ADDON_ITEM_RULES: List[tuple[re.Pattern, str]] = [
+    # ПАКЕТЫ
+    (re.compile(r'(?i)\bпакет(ы)?\s*(для)?\s*(шин|кол(е|ё)с)\b'), "Пакеты для шин"),
+
+    # ХРАНЕНИЕ
+    (re.compile(r'(?i)\bсезонн\w*\s+хранен'), "Сезонное хранение"),
+    (re.compile(r'(?i)\bхранен'), "Сезонное хранение"),
+
+    # ШИНОМОНТАЖ / АКЦИИ
+    (re.compile(r'(?i)\bшиномонта?ж\b'), "Шиномонтаж"),
+    (re.compile(r'(?i)\bбесплатн\w*\s+(шиномонта?ж|переобув)'), "Шиномонтаж (акция)"),
+    (re.compile(r'(?i)\bкупон\w*\s+на\s+бесплатн\w*\s+шиномонта?ж'), "Шиномонтаж (акция)"),
+    (re.compile(r'(?i)\bшиномонта?ж\s+подар'), "Шиномонтаж (акция)"),
+    (re.compile(r'(?i)\bакци(я|и)\b'), "Акции/купоны"),
+
+    # МОЙКА КОЛЁС
+    (re.compile(r'(?i)\bтехн(ологическ\w*\s+)?мойк\w*\s*(кол(е|ё)с)?'), "Мойка колёс"),
+    (re.compile(r'(?i)\bмойк\w*\s*(кол(е|ё)с)?'), "Мойка колёс"),
+
+    # МОНТАЖ / ДЕМОНТАЖ / КОМПЛЕКС
+    (re.compile(r'(?i)\bдемонтаж[-\s]*монтаж[-\s]*балансиров'), "Комплекс ДМБ"),
+    (re.compile(r'(?i)\bсняти?е?\s*(и|/)?\s*установ'), "Снятие/установка"),
+    (re.compile(r'(?i)\bмонтаж(?!.*балансиров)'), "Монтаж"),
+    (re.compile(r'(?i)\bдемонтаж\b'), "Демонтаж"),
+
+    # БАЛАНСИРОВКА / ГРУЗИКИ
+    (re.compile(r'(?i)\bбалансиров'), "Балансировка"),
+    (re.compile(r'(?i)\bгруз(ы|иков)?\b'), "Балансировочные грузики"),
+    (re.compile(r'(?i)\bустановк\w*\s+грузик'), "Балансировочные грузики"),
+
+    # ВЕНТИЛИ / ДАТЧИКИ
+    (re.compile(r'(?i)\bвентил(ь|я|и)\b'), "Вентили"),
+    (re.compile(r'(?i)\bдатчик(ов)?\b'), "Датчики давления (TPMS)"),
+    (re.compile(r'(?i)\bустановк\w*\s+датчик'), "Датчики давления (TPMS)"),
+
+    # ГАРАНТИЯ
+    (re.compile(r'(?i)\b(доп(\.|олнительн\w*)?\s+)?расширенн\w*\s+гарант'), "Доп. гарантия (расширенная)"),
+    (re.compile(r'(?i)\bдоп(\.|олнительн\w*)?\s+гарант'), "Доп. гарантия (расширенная)"),
+
+    # ПРОЧИЕ СЕРВИСЫ
+    (re.compile(r'(?i)\bрезервирован|резервировани|резервировани|резерв\b'), "Резервирование"),
+    (re.compile(r'(?i)\bутилиз(аци|ация)\s+шин'), "Утилизация шин"),
+    (re.compile(r'(?i)\bонлайн\s+оплат'), "Онлайн оплата"),
+    (re.compile(r'(?i)\bподарочн\w*\s+литр\w*\s+бензин'), "Подарочные литры бензина"),
+    (re.compile(r'(?i)\bтрейд[-\s]*ин\b'), "Трейд-ин"),
+
+    # ТОВАРЫ / КОМПЛЕКТУХА
+    (re.compile(r'(?i)\bкреп(е|ё)ж\b'), "Крепёж"),
+    (re.compile(r'(?i)\bпроставк\w+'), "Проставки"),
+    (re.compile(r'(?i)\bколпак\w+'), "Колпаки"),
+    (re.compile(r'(?i)\bкомпрессор\b'), "Компрессор"),
+    (re.compile(r'(?i)\bкол(е|ё)са\b'), "Колёса/комплекты"),
+    (re.compile(r'(?i)\bшины\b'), "Шины"),
+
+    # ОШИПОВКА
+    (re.compile(r'(?i)\bошиповк'), "Ошиповка"),
+]
+def _norm_text(s: str) -> str:
+    return s.lower().replace("ё", "е").strip()
+
+def normalize_addon_item(raw: str) -> str:
+    """Возвращает каноническое имя типа допродажи по строке ввода."""
+    if not raw or not str(raw).strip():
+        return ""
+    s = _norm_text(str(raw))
+    for rx, canon in ADDON_ITEM_RULES:
+        if rx.search(s):
+            return canon
+    # не нашли — эвристика по простым ключам «пакет»
+    if re.search(r'\bпакет', s):
+        return "Пакеты для шин"
+    return raw.strip().capitalize()
+
+def normalize_addon_items(items: Iterable[str]) -> List[str]:
+    """Нормализует список items и убирает дубликаты, сохраняя порядок."""
+    seen = set()
+    out: List[str] = []
+    for it in items or []:
+        canon = normalize_addon_item(it)
+        if not canon:
+            continue
+        if canon not in seen:
+            seen.add(canon)
+            out.append(canon)
+    return out
 
 def make_unique_columns(cols: pd.Index) -> pd.Index:
     seen: Dict[str, int] = {}
@@ -1100,15 +1185,15 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
         parsed = _parse_items(j if str(j).strip() not in {"", "nan", "null"} else s)
         # уникальные типы в одном диалоге, чтобы не раздуть счётчик
         items_lists.append(sorted(set(parsed)))
-
+    items_lists_norm = [normalize_addon_items(lst) for lst in items_lists]
     items_df = pd.DataFrame({
-        "items": items_lists,
+        "items": items_lists_norm,
         "offered": offered_mask.values if len(offered_mask) == len(summary) else False,
         "accepted": accepted_mask.values if len(accepted_mask) == len(summary) else False,
     })
-
     # разворачиваем
     expl_all = items_df.explode("items", ignore_index=True).dropna(subset=["items"])
+
     if expl_all.empty:
         items_stats = pd.DataFrame(
             {"Тип допродажи": [], "Кол-во диалогов (всего)": [], "Доля от всех": [],
@@ -1138,6 +1223,7 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
             )
             .sort_values(["Кол-во (предложено)", "Кол-во (принято)"], ascending=False, kind="mergesort")
         )
+    items_stats = items_stats[items_stats["Кол-во диалогов (всего)"] >= 2]
 
     # вывод таблицы
     st_it, en_it = write_table(
