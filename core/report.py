@@ -72,7 +72,7 @@ MAP_OWNER = {"client": "клиент", "sales": "оператор"}
 _SPLIT_RE = re.compile(r"[;,|/\\]+")
 _TRIM = " \"'“”«»·-–—"
 
-CH_COL_SIZE = {"width": 479, "height": 300}
+CH_COL_SIZE = {"width": 478, "height": 300}
 CH_COL_SETTING = {"x_offset": 0, "y_offset": 0, "object_position": 1}
 
 ADDON_ITEM_RULES: List[tuple[re.Pattern, str]] = [
@@ -1266,7 +1266,7 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
         ch_col.combine(ch_line)
         ch_col.set_y_axis({"major_gridlines": {"visible": False}})
         ch_col.set_y2_axis({"num_format": "0%"})
-        ch_col.set_size({"width": 1437, "height": 900})
+        ch_col.set_size({"width": 955, "height": 600})
         # строго ПОД таблицей, подвиньте левый столбец при необходимости
         ws.insert_chart(en_it + 1, 0, ch_col, {"x_scale": 1.0, "y_scale": 1.0})
 
