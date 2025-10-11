@@ -550,7 +550,7 @@ def _mode_nonempty(series: pd.Series, allowed: set = None) -> str:
     if series is None or series.empty:
         return ""
     s = series.astype(str).str.strip()
-    s = s[~s.isin(["", "nan", "none", "null"])]
+    s = s[~s.isin(["", "nan", "none", "null", "None"])]
     if allowed is not None:
         s = s[s.isin(allowed)]
     if s.empty:
@@ -1411,8 +1411,6 @@ def write_dialogs_sheet(wb, summary: pd.DataFrame):
 
     headers = [
         ("dialog_id", "Идентификатор диалога"),
-        ("theme_class", "Класс темы"),
-        ("theme", "Тема"),
         ("file_name", "Имя файла"),
         ("name_sales", "Имя SALES"),
         ("name_client", "Обращение к клиенту"),
@@ -1461,7 +1459,7 @@ def write_dialogs_sheet(wb, summary: pd.DataFrame):
 
     # ширины
     col_widths = {
-        "Идентификатор диалога": 36, "Класс темы": 12, "Тема": 28, "Имя файла": 28,
+        "Идентификатор диалога": 36, "Имя файла": 28,
         "Имя SALES": 16, "Обращение к клиенту": 18,
         "Интент": 12, "Категория": 16, "Деталь категории": 18,
         "Диаметр, дюйм": 14, "Сезон": 12, "Наличие": 12,
