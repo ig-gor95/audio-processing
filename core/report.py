@@ -528,8 +528,8 @@ def aggregate_per_dialog(df: pd.DataFrame) -> pd.DataFrame:
 
         base = dict(
             dialog_id=str(did),
-            theme_class=theme_class,
-            theme=theme_joined,
+            theme_class=theme_class, #todo удалить столбец
+            theme=theme_joined, #todo удалить столбец
             file_name=str(sub.get(FILE_COL, pd.Series([""])).iloc[0]) if FILE_COL in sub.columns else "",
             duration_sec=duration,
             rows_count=int(len(sub)),
@@ -619,7 +619,7 @@ def compute_blocks(summary: pd.DataFrame):
         return float(pd.to_numeric(summary.get(col, pd.Series([])), errors="coerce").fillna(0).mean())
 
     rates = {
-        "Назначен шаг (next_set)": _rate("llm_next_set"),
+        "Назначен шаг": _rate("llm_next_set"),
         "Есть резюме (wrap_up)": _rate("llm_wrap_up"),
         "Есть возражение": _rate("llm_obj_detected"),
         "Допродажа предложена": _rate("llm_addon_offered"),
@@ -884,7 +884,7 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
 
     # ===== KPI (оставляем, как ориентир; без изменений макета)
     kpi = pd.DataFrame([
-        {"Метрика": "Назначен шаг (next_set)", "Значение_%": rates.get("Назначен шаг (next_set)", 0.0),
+        {"Метрика": "Назначен шаг", "Значение_%": rates.get("Назначен шаг", 0.0),
          "Примечание": "Фиксация следующего шага."},
         {"Метрика": "Есть wrap-up", "Значение_%": rates.get("Есть резюме (подведение итогов)", 0.0),
          "Примечание": "Подтверждение условий."},
@@ -907,13 +907,13 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
     # ===== Категория — комбо «кол-во + доля»
     cats = dist_counts(summary["llm_category"], denom=total_dialogs, keep_empty=False)
     st_c, en_c = write_table(cats.rename(columns={"Значение": "Категория"}), row, 4, title="Распределение: Категория")
-    insert_combo_count_pct("Категория: кол-во + доля", st_c, en_c, 0, 1, 2, below_row=en_c + 1, left_col=4)
+    insert_combo_count_pct("Категория: кол-во + доля", st_c, en_c, 4, 5, 6, below_row=en_c + 1, left_col=4)
 
     # ===== Сезон (LLM) — учитываем «не указано», тоже комбо
     seasons = dist_counts(summary["llm_season_ru"], denom=total_dialogs, keep_empty=True, empty_label="Не указано")
     st_s, en_s = write_table(seasons.rename(columns={"Значение": "Сезон (LLM)"}), row, 8,
                              title="Распределение: Сезон (LLM)")
-    insert_combo_count_pct("Сезон: кол-во + доля", st_s, en_s, 0, 1, 2, below_row=en_s + 1, left_col=8)
+    insert_combo_count_pct("Сезон: кол-во + доля", st_s, en_s, 8, 9, 10, below_row=en_s + 1, left_col=8)
 
     row = max(en_i + 8, en_c + 10, en_s + 10) + 2
 
@@ -931,7 +931,7 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
                              empty_label="Не указано")
     st_ts, en_ts = write_table(obj_status.rename(columns={"Значение": "Статус возражения"}), row, 4,
                                title="Распределение: Статус возражения")
-    insert_combo_count_pct("Статус возражения", st_ts, en_ts, 0, 1, 2, below_row=en_ts + 1, left_col=4)
+    insert_combo_count_pct("Статус возражения", st_ts, en_ts, 4, 5, 6, below_row=en_ts + 1, left_col=4)
 
     # «Доля и качество»: доля возражений + КОЛИЧЕСТВО handling (ACK+SOL+CLOSE суммой), а не среднее
     tmp = summary.assign(
@@ -946,20 +946,20 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
     ch_col = wb.add_chart({"type": "column"})
     ch_col.add_series({
         "name": "Количество разрешений возражений",
-        "categories": ["Summary", st_q, 0, en_q, 0],
-        "values": ["Summary", st_q, 2, en_q, 2],
+        "categories": ["Summary", st_q, 8, en_q, 8],
+        "values": ["Summary", st_q, 10, en_q, 10],
     })
     ch_line = wb.add_chart({"type": "line"})
     ch_line.add_series({
         "name": "Доля возражений",
-        "categories": ["Summary", st_q, 0, en_q, 0],
-        "values": ["Summary", st_q, 1, en_q, 1],
+        "categories": ["Summary", st_q, 8, en_q, 8],
+        "values": ["Summary", st_q, 9, en_q, 9],
         "data_labels": {"value": True, "num_format": "0%"},
         "y2_axis": True,
     })
     ch_col.combine(ch_line)
     ch_col.set_y2_axis({"num_format": "0%"})
-    ch_col.set_size({"width": 570, "height": 300})
+    ch_col.set_size(CH_COL_SIZE)
     ws.insert_chart(en_q + 1, 8, ch_col, CH_COL_SETTING)
 
     row = max(en_t + 10, en_ts + 10, en_q + 10) + 2
@@ -1007,7 +1007,7 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
     st_ni, en_ni = write_table(next_by_intent, row, 4, title="Доля назначенных следующих шагов по намерениям")
     ch2 = wb.add_chart({"type": "column"})
     ch2.add_series({
-        "name": "Доля next_set",
+        "name": "Доля (Назначен шаг)",
         "categories": ["Summary", st_ni, 4 + 0, en_ni, 4 + 0],
         "values": ["Summary", st_ni, 4 + 1, en_ni, 4 + 1],
         "data_labels": {"value": True, "num_format": "0%"},
@@ -1019,38 +1019,173 @@ def write_summary_sheet(wb, summary, theme_counts, rates, dist_blocks, corr_matr
     row = max(en_ng + 10, en_ni + 10) + 2
 
     # Доля wrap-up по намерениям (исправленный график; без тотала)
-    wrap_by_intent = (summary.assign(w=summary["llm_wrap_up"].fillna(0).astype(int))
-                      .groupby("llm_intent", dropna=False)["w"].mean()
-                      .reset_index().rename(columns={"llm_intent": "Намерение", "w": "Доля подведений итогов"}))
-    st_wi, en_wi = write_table(wrap_by_intent, row, 4, title="Доля wrap-up по намерениям")
-    # ch3 = wb.add_chart({"type": "column"})
-    # ch3.add_series({
-    #     "name": "Доля wrap-up",
-    #     "categories": ["Summary", st_wi, 4 + 0, en_wi, 4 + 0],
-    #     "values": ["Summary", st_wi, 4 + 1, en_wi, 4 + 1],
-    #     "data_labels": {"value": True, "num_format": "0%"},
-    # })
-    # ch3.set_y_axis({"num_format": "0%"})
-    # ws.insert_chart(en_wi + 1, 4, ch3, {"x_scale": 1.0, "y_scale": 1.0})
+    wrap_by_intent = (
+        summary.assign(w=summary["llm_wrap_up"].fillna(0).astype(int))
+        .groupby("llm_intent", dropna=False)
+        .agg(Количество=("w", "sum"), Доля=("w", "mean"))
+        .reset_index()
+        .rename(columns={"llm_intent": "Намерение", "Доля": "Доля подведенний итогов"})
+    )
 
-    # Доля допродажи — только таблица (без графика)
-    ao_total = pd.DataFrame([{"Этап": "Предложена допродажа", "Доля_%": rates.get("Допродажа предложена", 0.0)}])
-    _ = write_table(ao_total, row, 0, title="Доля допродажи")
+    # таблица с количеством и долей
+    st_wi, en_wi = write_table(wrap_by_intent, row, 7, title="Подведенние итогов по намерениям")
 
-    # Принята + среднее число позиций — таблица, без графика
-    def _items_count(s: str) -> int:
-        if not isinstance(s, str) or not s.strip():
-            return 0
-        return len([p.strip() for p in s.split(",") if p.strip()])
+    # график: столбцы = количество, линия = доля
+    ch = wb.add_chart({"type": "column"})
+    ch.set_title({"name": "Подведенние итогов по намерениям"})
 
-    mean_items = summary.get("llm_addon_items", pd.Series([], dtype=str)).map(
-        _items_count).mean() if "llm_addon_items" in summary.columns else 0.0
-    acc_total = pd.DataFrame([
-        {"Показатель": "Принята допродажа", "Значение_%": rates.get("Допродажа принята", 0.0)},
-        {"Показатель": "Среднее число позиций в допродаже", "Значение": round(float(mean_items or 0.0), 2)},
-    ])
-    st_acc, en_acc = write_table(acc_total, row, 8, title="Принята допродажа и среднее число позиций")
-    row = max(en_wi + 2, en_acc) + 2
+    # количество wrap-up
+    ch.add_series({
+        "name": "Количество подведенний итогов",
+        "categories": ["Summary", st_wi, 7, en_wi, 7],
+        "values": ["Summary", st_wi, 8, en_wi, 8],
+        "data_labels": {"value": True},
+    })
+
+    # доля wrap-up
+    line = wb.add_chart({"type": "line"})
+    line.add_series({
+        "name": "Доля подведенний итогов",
+        "categories": ["Summary", st_wi, 7, en_wi, 7],
+        "values": ["Summary", st_wi, 9, en_wi, 9],
+        "data_labels": {"value": True, "num_format": "0%"},
+        "y2_axis": True,
+    })
+
+    # объединяем графики
+    ch.combine(line)
+    ch.set_y2_axis({"num_format": "0%"})
+    ch.set_y_axis({"major_gridlines": {"visible": False}})
+    ch.set_size(CH_COL_SIZE)
+    ws.insert_chart(en_wi + 1, 7, ch, CH_COL_SETTING)
+
+    # ===== Принята допродажа + абсолюты + график (минимальные правки блока) =====
+    # ===== Допродажи по типам items: частоты, доли и конверсия =====
+    import json
+    import re
+
+    def _parse_items(cell) -> list[str]:
+        """Возвращает список типов допродажи из ячейки.
+        Приоритет: JSON (llm_addon_items_json) → строка с запятыми (llm_addon_items)."""
+        if cell is None:
+            return []
+        # если уже list
+        if isinstance(cell, list):
+            return [str(x).strip() for x in cell if str(x).strip()]
+        s = str(cell).strip()
+        if not s or s.lower() in {"nan", "none", "null", '[]'}:
+            return []
+        # пробуем json
+        try:
+            arr = json.loads(s)
+            if isinstance(arr, list):
+                return [str(x).strip() for x in arr if str(x).strip()]
+        except Exception:
+            pass
+        # иначе — парсим как строку с разделителями
+        parts = [p.strip() for p in re.split(r"[;,/|]+", s) if p and p.strip()]
+        return parts
+
+    # маски
+    offered_mask = summary.get("llm_addon_offered", pd.Series([], dtype=int)).fillna(0).astype(int) > 0
+    accepted_mask = summary.get("llm_addon_accepted", pd.Series([], dtype=int)).fillna(0).astype(int) > 0
+    total_dlgs = int(summary["dialog_id"].nunique()) if "dialog_id" in summary.columns else max(1, len(summary))
+
+    # извлекаем items (по диалогу)
+    items_json_col = summary.get("llm_addon_items_json", pd.Series([], dtype=str))
+    items_str_col = summary.get("llm_addon_items", pd.Series([], dtype=str))
+    items_lists = []
+    for j, s in zip(items_json_col.reindex(summary.index, fill_value=""),
+                    items_str_col.reindex(summary.index, fill_value="")):
+        parsed = _parse_items(j if str(j).strip() not in {"", "nan", "null"} else s)
+        # уникальные типы в одном диалоге, чтобы не раздуть счётчик
+        items_lists.append(sorted(set(parsed)))
+
+    items_df = pd.DataFrame({
+        "items": items_lists,
+        "offered": offered_mask.values if len(offered_mask) == len(summary) else False,
+        "accepted": accepted_mask.values if len(accepted_mask) == len(summary) else False,
+    })
+
+    # разворачиваем
+    expl_all = items_df.explode("items", ignore_index=True).dropna(subset=["items"])
+    if expl_all.empty:
+        items_stats = pd.DataFrame(
+            {"Тип допродажи": [], "Кол-во диалогов (всего)": [], "Доля от всех": [],
+            "Кол-во (предложено)": [], "Кол-во (принято)": [], "Конверсия принятия": []}
+        )
+    else:
+        # по типам
+        cnt_all = expl_all.groupby("items")["items"].count().rename("cnt_all")
+        cnt_offered = expl_all.loc[expl_all["offered"]].groupby("items")["items"].count().rename("cnt_offered")
+        cnt_accepted = expl_all.loc[expl_all["accepted"]].groupby("items")["items"].count().rename("cnt_accepted")
+
+        items_stats = (
+            pd.concat([cnt_all, cnt_offered, cnt_accepted], axis=1).fillna(0).astype(int).reset_index()
+            .rename(columns={"items": "Тип допродажи",
+                             "cnt_all": "Кол-во диалогов (всего)",
+                             "cnt_offered": "Кол-во (предложено)",
+                             "cnt_accepted": "Кол-во (принято)"})
+            .assign(
+                **{
+                    "Доля от всех": lambda d: d["Кол-во диалогов (всего)"] / (total_dlgs if total_dlgs else 1),
+                    "Конверсия принятия": lambda d: d.apply(
+                        lambda r: (r["Кол-во (принято)"] / r["Кол-во (предложено)"]) if r[
+                                                                                            "Кол-во (предложено)"] > 0 else 0.0,
+                        axis=1
+                    )
+                }
+            )
+            .sort_values(["Кол-во (предложено)", "Кол-во (принято)"], ascending=False, kind="mergesort")
+        )
+
+    # вывод таблицы
+    st_it, en_it = write_table(
+        items_stats,
+        row, 0,
+        title="Допродажи по типам: частоты, доли и конверсия",
+        fit_wrap_cols={"Тип допродажи"}
+    )
+
+    # график ПОД таблицей:
+    #   — столбцы: «Кол-во (предложено)» и «Кол-во (принято)»
+    #   — линия на вторую ось: «Конверсия принятия»
+    if not items_stats.empty:
+        ch_col = wb.add_chart({"type": "column"})
+        ch_col.set_title({"name": "Допродажи по типам: абсолюты и конверсия"})
+        # предложено
+        ch_col.add_series({
+            "name": "Предложено",
+            "categories": ["Summary", st_it, 0, en_it, 0],  # Тип допродажи
+            "values": ["Summary", st_it, 2, en_it, 2],  # Кол-во (предложено)
+            "data_labels": {"value": True},
+        })
+        # принято
+        ch_col.add_series({
+            "name": "Принято",
+            "categories": ["Summary", st_it, 0, en_it, 0],
+            "values": ["Summary", st_it, 3, en_it, 3],  # Кол-во (принято)
+            "data_labels": {"value": True},
+        })
+
+        # линия: конверсия
+        ch_line = wb.add_chart({"type": "line"})
+        ch_line.add_series({
+            "name": "Конверсия принятия",
+            "categories": ["Summary", st_it, 0, en_it, 0],
+            "values": ["Summary", st_it, 5, en_it, 5],  # Конверсия принятия
+            "data_labels": {"value": True, "num_format": "0%"},
+            "y2_axis": True,
+        })
+        ch_col.combine(ch_line)
+        ch_col.set_y_axis({"major_gridlines": {"visible": False}})
+        ch_col.set_y2_axis({"num_format": "0%"})
+        ch_col.set_size({"width": 1437, "height": 900})
+        # строго ПОД таблицей, подвиньте левый столбец при необходимости
+        ws.insert_chart(en_it + 1, 0, ch_col, {"x_scale": 1.0, "y_scale": 1.0})
+
+    # отступ для следующего блока
+    row = en_it + 22
 
     # ===== Корреляции: «Сезон указан» — по НЕПУСТЫМ строкам
     bin_cols = [
