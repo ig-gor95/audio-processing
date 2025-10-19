@@ -1,14 +1,6 @@
 # -*- coding: utf-8 -*-
-# Телеграм-бот: ASR (Whisper) + Диаризация (pyannote.audio 3.x) + аккуратное разнесение по спикерам
+# Телеграм-бот: ASR (Whisper) + Диаризация (pyannote 3.x) + LLM-анализ (JSON)
 import sys, locale
-
-import torch
-
-try:
-    locale.setlocale(locale.LC_ALL, "C.UTF-8")
-except Exception:
-    pass
-
 import asyncio
 import os
 import tempfile
@@ -16,36 +8,47 @@ import subprocess
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+import torch
+import httpx
 from pydub import AudioSegment
 from openai import OpenAI
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
+# ====== LOCALE ======
+try:
+    locale.setlocale(locale.LC_ALL, "C.UTF-8")
+except Exception:
+    pass
+
 # ====== CONFIG ======
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+PROXY = os.getenv("OPENAI_HTTP_PROXY", "socks5h://127.0.0.1:1080")  # напр. socks5h://127.0.0.1:1080
 
 # Whisper
 OPENAI_STT_MODEL = "whisper-1"
 OPENAI_STT_FALLBACK = "gpt-4o-mini-transcribe"
 
+# LLM для анализа
+OPENAI_ANALYZE_MODEL = "gpt-4o-mini"
+
 # PyAnnote
-HUGGINGFACE_TOKEN = ''
-PYANNOTE_PIPE = os.getenv("PYANNOTE_PIPE", "pyannote/speaker-diarization-3.1")  # современный пайплайн
+HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN", "")
+PYANNOTE_PIPE = os.getenv("PYANNOTE_PIPE", "pyannote/speaker-diarization-3.1")
 
 # I/O limits
 MAX_FILE_MB = 45
 MAX_AUDIO_DURATION = 600  # сек
 
 # ====== TUNING ======
-# Отсечение «микро» интервалов у нулевой секунды/вообще
-START_SNAP = 0.15          # не допускаем границы ближе к нулю
-MIN_DIAR_SPAN = 0.30       # выкидываем спаны короче этого
-DOMINANT_FRAC = 0.85       # если один спикер покрывает >= 85% ASR-сегмента — назначаем его без резки
-MERGE_GAP = 0.35           # склейка близких кусков одного спикера при выводе
-MIN_SEG_DUR = 0.35         # не выводим совсем короткие в рендере
-HELLO_FIX_WINDOW = 12.0    # окно приветствий
-HELLO_FORCE_CHANGE_T = 3.0 # ранняя устойчивая смена → резка приветствия
+START_SNAP = 0.15
+MIN_DIAR_SPAN = 0.30
+DOMINANT_FRAC = 0.85
+MERGE_GAP = 0.35
+MIN_SEG_DUR = 0.35
+HELLO_FIX_WINDOW = 12.0
+HELLO_FORCE_CHANGE_T = 3.0
 
 def log(s: str):
     try:
@@ -61,11 +64,10 @@ class Segment:
     speaker: Optional[str] = None
 
 def _pick_device() -> torch.device:
-    # CUDA > MPS > CPU
     if torch.cuda.is_available():
         return torch.device("cuda")
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return torch.device("mps")      # Apple Silicon
+        return torch.device("mps")
     return torch.device("cpu")
 
 # ====== utils ======
@@ -101,7 +103,7 @@ def openai_transcribe(client: OpenAI, wav_path: str) -> Tuple[str, List[Segment]
 
     with open(wav_path, "rb") as f:
         try:
-            log("🎤 ASR: whisper-1 (verbose_json)")
+            log("ASR: whisper-1 (verbose_json)")
             resp = client.audio.transcriptions.create(
                 model=OPENAI_STT_MODEL,
                 file=f,
@@ -117,7 +119,7 @@ def openai_transcribe(client: OpenAI, wav_path: str) -> Tuple[str, List[Segment]
                     if en <= st: en = st + 0.10
                     segments.append(Segment(st, en, seg_text))
         except Exception as e:
-            log(f"⚠️ whisper-1 упал: {e}; пробуем gpt-4o-mini-transcribe")
+            log(f"whisper-1 ошибка: {e}; fallback gpt-4o-mini-transcribe")
             f.seek(0)
             try:
                 resp = client.audio.transcriptions.create(
@@ -128,7 +130,7 @@ def openai_transcribe(client: OpenAI, wav_path: str) -> Tuple[str, List[Segment]
                 )
                 text = str(resp) or ""
             except Exception as e2:
-                log(f"❌ ASR не удался: {e2}")
+                log(f"ASR не удался: {e2}")
                 return "", []
 
     if not segments and text:
@@ -138,28 +140,24 @@ def openai_transcribe(client: OpenAI, wav_path: str) -> Tuple[str, List[Segment]
         except Exception:
             dur = 0.01
         segments = [Segment(0.0, max(dur, 0.10), text)]
-    log(f"✅ ASR: {len(segments)} сегментов")
+    log(f"ASR ok: {len(segments)} сегментов")
     return text, segments
 
 # ====== PyAnnote diarization ======
 def diarize_with_pyannote(wav_path: str) -> List[Tuple[float, float, str]]:
-    """
-    Возвращает [(start, end, 'SPEAKER_00'), ...] → позже перелейблим в «Спикер 1/2».
-    """
     try:
-        import torch
         from pyannote.audio import Pipeline
     except Exception as e:
-        log(f"ℹ️ PyAnnote недоступен: {e}")
+        log(f"PyAnnote недоступен: {e}")
         return []
 
     if not HUGGINGFACE_TOKEN:
-        log("ℹ️ Не задан HUGGINGFACE_TOKEN — диаризация отключена.")
+        log("Не задан HUGGINGFACE_TOKEN — диаризация отключена.")
         return []
 
     device = _pick_device()
     pipeline = Pipeline.from_pretrained(
-        "pyannote/speaker-diarization-3.1",
+        PYANNOTE_PIPE,
         use_auth_token=HUGGINGFACE_TOKEN,
     )
     pipeline.to(device)
@@ -167,29 +165,29 @@ def diarize_with_pyannote(wav_path: str) -> List[Tuple[float, float, str]]:
     try:
         diar = pipeline(wav_path)
     except Exception as e:
-        log(f"❌ Ошибка пайплайна PyAnnote: {e}")
+        log(f"PyAnnote ошибка: {e}")
         return []
 
-    # Собираем интервалы
     spans: List[Tuple[float, float, str]] = []
     for turn, _, speaker in diar.itertracks(yield_label=True):
         s, e = float(turn.start), float(turn.end)
         if s is None or e is None:
             continue
-        s = max(START_SNAP, s)  # не пускаем границы к 0.00
+        s = max(START_SNAP, s)
         if e - s >= MIN_DIAR_SPAN:
             spans.append((s, e, str(speaker)))
     spans.sort(key=lambda x: (x[0], x[1]))
-    log(f"🔊 PyAnnote: получено {len(spans)} интервалов")
+    log(f"PyAnnote ok: {len(spans)} интервалов")
     return spans
 
-# ====== Метки «Спикер 1/2» по доминированию в приветствии ======
+# ====== speaker relabel ======
 def relabel_speakers(diar: List[Tuple[float, float, str]]) -> List[Tuple[float, float, str]]:
-    if not diar: return diar
-    # накопим время по спикерам в первых секундах
+    if not diar:
+        return diar
     votes = {}
     for s, e, lab in diar:
-        if s >= HELLO_FIX_WINDOW: break
+        if s >= HELLO_FIX_WINDOW:
+            break
         ov = min(e, HELLO_FIX_WINDOW) - max(s, 0.0)
         if ov > 0:
             votes[lab] = votes.get(lab, 0.0) + ov
@@ -201,10 +199,9 @@ def relabel_speakers(diar: List[Tuple[float, float, str]]) -> List[Tuple[float, 
     mapping = {first_label: "Спикер 1"}
     if second_label:
         mapping[second_label] = "Спикер 2"
-    # Если больше 2 кластеров — остальные пусть идут как есть, но обычно их 2
     return [(s, e, mapping.get(lab, lab)) for s, e, lab in diar]
 
-# ====== Мэппинг текста на спикеров ======
+# ====== align text to speakers ======
 def split_text_by_overlap(asr_segments: List[Segment],
                           diar_spans: List[Tuple[float, float, str]]) -> List[Segment]:
     if not diar_spans:
@@ -230,13 +227,11 @@ def split_text_by_overlap(asr_segments: List[Segment],
         if en <= st or not seg.text.strip():
             continue
 
-        # В окне приветствия жёстче: если ранняя смена — берём доминирование, без лишней резки
         if st < HELLO_FORCE_CHANGE_T:
             lab = dominant_speaker(st, min(en, HELLO_FIX_WINDOW))
             result.append(Segment(st, en, seg.text, lab))
             continue
 
-        # Ищем перекрытия с диар-кусками
         overlaps = []
         for ts, te, lab in diar_spans:
             if en <= ts or st >= te:
@@ -250,14 +245,13 @@ def split_text_by_overlap(asr_segments: List[Segment],
             continue
 
         seg_len = en - st
-        best = max(overlaps, key=lambda x: x[1]-x[0])
-        if (best[1]-best[0]) / seg_len >= DOMINANT_FRAC:
+        best = max(overlaps, key=lambda x: x[1] - x[0])
+        if (best[1] - best[0]) / seg_len >= DOMINANT_FRAC:
             result.append(Segment(st, en, seg.text, best[2]))
         else:
             lab = dominant_speaker(st, en)
             result.append(Segment(st, en, seg.text, lab))
 
-    # склейка одинаковых спикеров
     merged: List[Segment] = []
     for s in sorted(result, key=lambda x: x.start):
         if merged and merged[-1].speaker == s.speaker and s.start - merged[-1].end <= MERGE_GAP:
@@ -267,7 +261,7 @@ def split_text_by_overlap(asr_segments: List[Segment],
             merged.append(s)
     return merged
 
-# ====== Rendering ======
+# ====== rendering ======
 def ts(sec: float) -> str:
     m, s = divmod(int(max(0, sec)), 60)
     return f"{m:02d}:{s:02d}"
@@ -306,15 +300,54 @@ def render_stats(segments: List[Segment]) -> str:
         lines.append(f"   {sp}: {m:02d}:{ss:02d} ({counts[sp]} реплик)")
     return "\n".join(lines)
 
+# ====== LLM-анализ (JSON) ======
+def analyze_dialogue_json(client: OpenAI, transcript: str) -> dict:
+    """
+    Возвращает dict:
+      topic: str
+      outcome: one_of["next_step_set","resolved","unresolved","followup_needed"]
+      sentiment: one_of["positive","neutral","negative"]
+      summary: str
+      action_items: list[str]
+      quality_flags: list[str]
+    """
+    try:
+        resp = client.chat.completions.create(
+            model=OPENAI_ANALYZE_MODEL,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content":
+                 "Ты аналитик колл-центра. Верни строго JSON без пояснений по схеме: "
+                 "{"
+                 "\"topic\": string, "
+                 "\"outcome\": one_of[\"next_step_set\",\"resolved\",\"unresolved\",\"followup_needed\"], "
+                 "\"sentiment\": one_of[\"positive\",\"neutral\",\"negative\"], "
+                 "\"summary\": string, "
+                 "\"action_items\": string[], "
+                 "\"quality_flags\": string[]"
+                 "}"
+                },
+                {"role": "user", "content":
+                 "Проанализируй транскрипт с пометками спикеров:\n\n" + transcript}
+            ],
+            temperature=0.2,
+        )
+        import json
+        raw = resp.choices[0].message.content or "{}"
+        return json.loads(raw)
+    except Exception as e:
+        log(f"LLM analyze failed: {e}")
+        return {}
+
 # ====== Telegram ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        f"🎙️ Пришлите аудио — расшифрую и разнесу по спикерам (PyAnnote + Whisper).\n⚡ До {MAX_FILE_MB} МБ или {MAX_AUDIO_DURATION//60} минут."
+        f"🎙️ Пришлите аудио — расшифрую, разнесу по спикерам и дам краткий анализ.\nДо {MAX_FILE_MB} МБ или {MAX_AUDIO_DURATION//60} минут."
     )
 
 async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.message
-    log("🔍 Получен аудиофайл")
+    log("Получен аудиофайл")
     tg_file, file_name = None, "audio"
     if msg.voice:
         tg_file = await context.bot.get_file(msg.voice.file_id); file_name = "voice.ogg"
@@ -323,25 +356,32 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     elif msg.document and (msg.document.mime_type or "").startswith("audio/"):
         tg_file = await context.bot.get_file(msg.document.file_id); file_name = msg.document.file_name or "audio"
     else:
-        await msg.reply_text("❌ Пришлите аудио."); return
+        await msg.reply_text("❌ Пришлите аудио.")
+        return
 
     with tempfile.TemporaryDirectory() as tmpdir:
         src = os.path.join(tmpdir, file_name)
         await tg_file.download_to_drive(src)
         if mb(os.path.getsize(src)) > MAX_FILE_MB:
-            await msg.reply_text("❌ Файл слишком большой."); return
+            await msg.reply_text("❌ Файл слишком большой.")
+            return
 
         ensure_ffmpeg()
         wav = convert_to_wav16k_mono(src)
 
         status = await msg.reply_text("🔄 Обрабатываю...")
         try:
-            client = OpenAI(api_key=OPENAI_API_KEY)
+            # HTTP-клиент с прокси (httpx 0.25.2: параметр proxy=)
+            http_client = httpx.Client(proxy=PROXY or None, timeout=60.0)
+            client = OpenAI(api_key=OPENAI_API_KEY, http_client=http_client)
 
             await status.edit_text("🔄 Транскрибирую (Whisper)...")
-            _, asr_segments = await asyncio.get_event_loop().run_in_executor(None, openai_transcribe, client, wav)
+            _, asr_segments = await asyncio.get_event_loop().run_in_executor(
+                None, openai_transcribe, client, wav
+            )
             if not asr_segments:
-                await status.edit_text("❌ Пустая транскрипция."); return
+                await status.edit_text("❌ Пустая транскрипция.")
+                return
 
             await status.edit_text("🔊 Диаризация (PyAnnote)...")
             diar = await asyncio.get_event_loop().run_in_executor(None, diarize_with_pyannote, wav)
@@ -353,29 +393,59 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 head = f"🎙️ Расшифровка аудио\n🎯 Обнаружено спикеров: {sp_count}\n"
                 body = head + transcript + render_stats(mapped)
             else:
-                # fallback без диаризации
-                for s in asr_segments: s.speaker = None
+                for s in asr_segments:
+                    s.speaker = None
                 transcript = render_transcript(asr_segments)
-                head = "🎙️ Расшифровка аудио\n⚠️ Диаризация недоступна (PyAnnote не сконфигурирован)\n"
+                head = "🎙️ Расшифровка аудио\n⚠️ Диаризация недоступна\n"
                 body = head + transcript + render_stats(asr_segments)
 
+            # Анализ диалога LLM (JSON)
+            await status.edit_text("🧠 Анализ диалога...")
+            analysis = analyze_dialogue_json(client, transcript)
+
+            # Отправка результатов
             await status.delete()
+
             preview = body[:1500] + ("\n\n...(см. файл)" if len(body) > 1500 else "")
             await msg.reply_text(preview)
 
-            import io
-            bio = io.BytesIO(body.encode("utf-8")); bio.name = "transcript.txt"
-            await msg.reply_document(bio)
+            import io, json as _json
+            # текст расшифровки
+            bio_txt = io.BytesIO(body.encode("utf-8")); bio_txt.name = "transcript.txt"
+            await msg.reply_document(bio_txt)
+
+            # анализ в человекочитаемом виде
+            if analysis:
+                analysis_text = (
+                    "🧠 Анализ:\n"
+                    f"• Тема: {analysis.get('topic','-')}\n"
+                    f"• Результат: {analysis.get('outcome','-')}\n"
+                    f"• Тональность: {analysis.get('sentiment','-')}\n"
+                    f"• Итог: {analysis.get('summary','-')}\n"
+                    f"• Действия: " + (", ".join(analysis.get('action_items', [])) or "-") + "\n"
+                    f"• Флаги качества: " + (", ".join(analysis.get('quality_flags', [])) or "-")
+                )
+                await msg.reply_text(analysis_text)
+
+                # сырой JSON-файл
+                bio_json = io.BytesIO(_json.dumps(analysis, ensure_ascii=False, indent=2).encode("utf-8"))
+                bio_json.name = "analysis.json"
+                await msg.reply_document(bio_json)
+            else:
+                await msg.reply_text("🧠 Анализ недоступен.")
 
         except Exception as e:
-            await status.edit_text(f"❌ Ошибка: {e}")
+            try:
+                await status.edit_text(f"❌ Ошибка: {e}")
+            except Exception:
+                pass
             log(f"Ошибка: {e}")
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO | filters.Document.AUDIO, handle_audio))
-    log("⚡ Бот запущен...")
+    log("Бот запущен")
     app.run_polling()
 
 if __name__ == "__main__":
