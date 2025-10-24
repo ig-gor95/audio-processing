@@ -19,6 +19,9 @@ warnings.filterwarnings('ignore', category=UserWarning)
 
 from pathlib import Path
 from core.pipeline import AudioProcessingPipeline, PipelineStage
+from log_utils import setup_logger
+
+logger = setup_logger(__name__)
 
 
 def example_1_run_full_pipeline():
@@ -173,7 +176,7 @@ def example_7_batch_processing():
 
 def example_8_single_file_complete_pipeline():
     """Example 8: Process first 10 files through ALL stages."""
-    print("=== Example 8: Complete Pipeline for First 10 Files ===\n")
+    logger.info("=== Example 8: Complete Pipeline for First 10 Files ===")
     
     from core.service.transcription_service import TranscriptionService
     from core.service.criteria_detection_service import CriteriaDetectionService
@@ -181,17 +184,15 @@ def example_8_single_file_complete_pipeline():
     from core.repository.audio_dialog_repository import AudioDialogRepository
     import time
     
-    # Specify folder with audio files
     audio_folder = Path("~/Documents/Аудио Бринекс/4/").expanduser()
     audio_files = list(audio_folder.glob("*.mp3"))
     
     if not audio_files:
-        print("❌ No audio files found in the folder")
+        logger.error("No audio files found in the folder")
         return
     
-    # Take first 10 files
     files_to_process = audio_files[:10]
-    print(f"📁 Found {len(audio_files)} files, processing first {len(files_to_process)}\n")
+    logger.info(f"Found {len(audio_files)} files, processing first {len(files_to_process)}")
     
     # Initialize services once
     transcription_service = TranscriptionService()
@@ -211,117 +212,92 @@ def example_8_single_file_complete_pipeline():
     processed_uuids = []
     start_time = time.time()
     
-    # ============================================================
-    # STAGE 1: Transcription & Diarization (per file)
-    # ============================================================
-    print(f"\n{'='*60}")
-    print("🎤 STAGE 1/3: TRANSCRIPTION & DIARIZATION")
-    print(f"{'='*60}\n")
+    logger.info("="*60)
+    logger.info("STAGE 1/3: TRANSCRIPTION & DIARIZATION")
+    logger.info("="*60)
     
     for idx, audio_file in enumerate(files_to_process, 1):
-        print(f"⏳ [{idx}/{len(files_to_process)}] Processing: {audio_file.name}")
+        logger.info(f"[{idx}/{len(files_to_process)}] Processing: {audio_file.name}")
         
         try:
             file_uuid = transcription_service.process_audio_file(audio_file)
             
             if file_uuid:
-                print(f"   ✅ Transcribed | UUID: {file_uuid}\n")
+                logger.info(f"Transcribed successfully | UUID: {file_uuid}")
                 stats['transcribed'] += 1
                 processed_uuids.append(file_uuid)
             else:
-                # Try to get existing UUID
                 dialog = repo.find_by_filename(audio_file.name)
                 if dialog:
                     file_uuid = dialog.id
-                    print(f"   ⚠️  Already processed | UUID: {file_uuid}\n")
+                    logger.warning(f"Already processed | UUID: {file_uuid}")
                     stats['skipped'] += 1
                     processed_uuids.append(file_uuid)
                 else:
-                    print(f"   ❌ Could not process file\n")
+                    logger.error("Could not process file")
                     stats['errors'] += 1
             
         except Exception as e:
-            print(f"   ❌ Error: {str(e)}\n")
+            logger.error(f"Error processing file: {str(e)}")
             stats['errors'] += 1
     
-    # ============================================================
-    # STAGE 2: Criteria Detection (BATCH on N files)
-    # ============================================================
-    print(f"\n{'='*60}")
-    print(f"📊 STAGE 2/3: CRITERIA DETECTION (BATCH)")
-    print(f"{'='*60}")
-    print(f"⏳ Running criteria detection on {len(processed_uuids)} processed files...")
-    print("   (Batch processing is MUCH faster than per-file!)\n")
+    logger.info("="*60)
+    logger.info("STAGE 2/3: CRITERIA DETECTION (BATCH)")
+    logger.info("="*60)
+    logger.info(f"Running criteria detection on {len(processed_uuids)} processed files (batch mode)")
     
     criteria_start = time.time()
     try:
         criteria_service.process_dialogs(dialog_ids=processed_uuids)
         criteria_elapsed = time.time() - criteria_start
-        print(f"✅ Criteria detection completed in {criteria_elapsed:.2f}s")
-        print(f"   Dialogs processed: {len(processed_uuids)}")
-        print(f"   Average per file: {criteria_elapsed/len(processed_uuids):.2f}s\n")
+        logger.info(f"Criteria detection completed in {criteria_elapsed:.2f}s")
+        logger.info(f"Dialogs processed: {len(processed_uuids)}, Average per file: {criteria_elapsed/len(processed_uuids):.2f}s")
         stats['criteria_success'] = len(processed_uuids)
     except Exception as e:
-        print(f"❌ Criteria detection failed: {str(e)}\n")
+        logger.error(f"Criteria detection failed: {str(e)}")
     
-    # ============================================================
-    # STAGE 3: LLM Processing (per file)
-    # ============================================================
-    print(f"\n{'='*60}")
-    print("🤖 STAGE 3/3: LLM ANALYSIS")
-    print(f"{'='*60}\n")
+    logger.info("="*60)
+    logger.info("STAGE 3/3: LLM ANALYSIS")
+    logger.info("="*60)
     
     for idx, file_uuid in enumerate(processed_uuids, 1):
-        print(f"⏳ [{idx}/{len(processed_uuids)}] LLM processing UUID: {file_uuid}")
+        logger.info(f"[{idx}/{len(processed_uuids)}] LLM processing UUID: {file_uuid}")
         
         try:
             success = llm_service.process_dialog(file_uuid)
             if success:
-                print(f"   ✅ LLM analysis completed\n")
+                logger.info("LLM analysis completed")
                 stats['llm_success'] += 1
             else:
-                print(f"   ⚠️  LLM processing skipped\n")
+                logger.warning("LLM processing skipped")
         except Exception as e:
-            print(f"   ⚠️  Warning: {str(e)}\n")
+            logger.warning(f"LLM processing error: {str(e)}")
     
-    # Final Summary
     elapsed = time.time() - start_time
-    print(f"\n{'='*60}")
-    print("✅ BATCH PROCESSING COMPLETE")
-    print(f"{'='*60}")
-    print(f"\n📊 Statistics:")
-    print(f"   Total files:            {len(files_to_process)}")
-    print(f"   Newly transcribed:      {stats['transcribed']}")
-    print(f"   Already processed:      {stats['skipped']}")
-    print(f"   Criteria detected:      {stats['criteria_success']} (batch)")
-    print(f"   LLM analysis done:      {stats['llm_success']}")
-    print(f"   Errors:                 {stats['errors']}")
-    print(f"\n⏱️  Total time: {elapsed:.2f} seconds")
-    print(f"   Average per file: {elapsed/len(files_to_process):.2f} seconds")
-    print(f"\n💡 Note: Criteria detection processes only the {len(processed_uuids)} files you transcribed!")
-    print(f"\n✅ All {len(processed_uuids)} files processed through all 3 stages!")
-    print()
+    logger.info("="*60)
+    logger.info("BATCH PROCESSING COMPLETE")
+    logger.info("="*60)
+    logger.info("Statistics:")
+    logger.info(f"  Total files:            {len(files_to_process)}")
+    logger.info(f"  Newly transcribed:      {stats['transcribed']}")
+    logger.info(f"  Already processed:      {stats['skipped']}")
+    logger.info(f"  Criteria detected:      {stats['criteria_success']} (batch)")
+    logger.info(f"  LLM analysis done:      {stats['llm_success']}")
+    logger.info(f"  Errors:                 {stats['errors']}")
+    logger.info(f"Total time: {elapsed:.2f} seconds, Average per file: {elapsed/len(files_to_process):.2f} seconds")
+    logger.info(f"Criteria detection processed only the {len(processed_uuids)} files you transcribed (batch mode)")
+    logger.info(f"All {len(processed_uuids)} files processed through all 3 stages")
 
 
 def main():
     """Run all examples."""
-    print("Audio Processing Pipeline - Usage Examples")
-    print("=" * 60)
-    print()
+    logger.info("Audio Processing Pipeline - Usage Examples")
+    logger.info("=" * 60)
     
-    # Uncomment the examples you want to run:
+    example_8_single_file_complete_pipeline()
     
-    # example_1_run_full_pipeline()
-    # example_2_run_individual_stages()
-    # example_3_process_specific_files()
-    # example_4_use_services_directly()
-    # example_5_custom_configuration()
-    # example_6_check_status()
-    # example_7_batch_processing()
-    example_8_single_file_complete_pipeline()  # NEW: Process one file through all stages
-    
-    print("=" * 60)
-    print("Examples complete!")
+    logger.info("=" * 60)
+    logger.info("Examples complete")
 
 
 if __name__ == "__main__":
