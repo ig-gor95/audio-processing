@@ -14,6 +14,12 @@ from core.dto.diarisation_result import DiarizedResult
 from log_utils import setup_logger
 from yaml_reader import ConfigLoader
 
+# Suppress verbose logging from speechbrain and torch
+import logging
+import warnings
+logging.getLogger('speechbrain').setLevel(logging.WARNING)
+warnings.filterwarnings('ignore', category=UserWarning, message='.*MPS backend.*')
+
 # ================= Setup =================
 logger = setup_logger(__name__)
 config = ConfigLoader("../configs/config.yaml")
