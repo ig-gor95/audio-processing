@@ -55,3 +55,13 @@ config/production.yaml
 temp/
 tmp/
 *.tmp
+
+# Models
+models/
+
+# Notebook outputs and data files
+notebooks/test_data.csv
+notebooks/test_data.csv.zip
+notebooks/sales_exec_summary_plus.html
+notebooks/voice_analytics_report_pro.html
+notebooks/names.xlsx
