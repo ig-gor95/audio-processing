@@ -28,7 +28,7 @@ class SaigaClient:
             api_key=config.get("saiga.api-key", "ollama"),
             http_client=httpx.Client(
                 transport=transport,   # ← ретраи на уровне транспорта
-                proxies=None,
+                proxy=None,
                 trust_env=False,
                 timeout=httpx.Timeout(
                     connect=10.0,       # соединение поднимается быстро

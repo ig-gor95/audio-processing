@@ -168,7 +168,7 @@ def example_8_single_file_complete_pipeline():
     from core.service.llm_processing_service import LLMProcessingService
     
     # Specify a single audio file
-    audio_file = Path("~/Documents/Аудио Бринекс/2/").expanduser()
+    audio_file = Path("~/Documents/Аудио Бринекс/4/").expanduser()
     audio_files = list(audio_file.glob("*.mp3"))
     
     if not audio_files:
