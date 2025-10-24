@@ -127,7 +127,7 @@ class DialogueAnalyzerPandas:
         result = df['speaker_id'].copy()
 
         normalized_texts = df[text_column].apply(normalize_text)
-        sales_mask = normalized_texts.apply(self.sales_detector.detect_by_text)
+        sales_mask = normalized_texts.apply(self.sales_detector.detect_sales_by_text)
 
         result[sales_mask] = 'SALES'
 
