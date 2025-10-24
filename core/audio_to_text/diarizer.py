@@ -1,5 +1,6 @@
 import os
 os.environ.setdefault("PYTORCH_ENABLE_NNPACK", "0")  # избегаем NNPack-конфликтов
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")  # Fix for MPS FFT operations on Apple Silicon
 
 from pathlib import Path
 import math
