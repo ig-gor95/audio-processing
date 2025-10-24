@@ -5,6 +5,18 @@ Example Usage of the Audio Processing Pipeline
 This script demonstrates different ways to use the refactored pipeline.
 """
 
+import os
+import logging
+import warnings
+
+# Suppress verbose logging before any imports
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+logging.getLogger('speechbrain').setLevel(logging.ERROR)
+logging.getLogger('pymorphy2').setLevel(logging.ERROR)
+logging.getLogger('pymorphy3').setLevel(logging.ERROR)
+logging.getLogger('httpx').setLevel(logging.WARNING)
+warnings.filterwarnings('ignore', category=UserWarning)
+
 from pathlib import Path
 from core.pipeline import AudioProcessingPipeline, PipelineStage
 
@@ -176,7 +188,7 @@ def example_8_single_file_complete_pipeline():
         return
     
     # Take the first file
-    single_file = audio_files[0]
+    single_file = audio_files[1]
     print(f"📁 Processing: {single_file.name}\n")
     
     # Stage 1: Transcription

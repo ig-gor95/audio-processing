@@ -14,10 +14,12 @@ from core.dto.diarisation_result import DiarizedResult
 from log_utils import setup_logger
 from yaml_reader import ConfigLoader
 
-# Suppress verbose logging from speechbrain and torch
+# Suppress verbose logging from speechbrain, pymorphy, and torch
 import logging
 import warnings
-logging.getLogger('speechbrain').setLevel(logging.WARNING)
+logging.getLogger('speechbrain').setLevel(logging.ERROR)
+logging.getLogger('pymorphy2').setLevel(logging.ERROR)
+logging.getLogger('pymorphy3').setLevel(logging.ERROR)
 warnings.filterwarnings('ignore', category=UserWarning, message='.*MPS backend.*')
 
 # ================= Setup =================
