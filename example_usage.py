@@ -175,12 +175,13 @@ def example_7_batch_processing():
 
 
 def example_8_single_file_complete_pipeline():
-    """Example 8: Process first 10 files through ALL stages."""
+    """Example 8: Process first 10 files through ALL stages (including loudness analysis)."""
     logger.info("=== Example 8: Complete Pipeline for First 10 Files ===")
     
     from core.service.transcription_service import TranscriptionService
     from core.service.criteria_detection_service import CriteriaDetectionService
     from core.service.llm_processing_service import LLMProcessingService
+    from core.service.loudness_analysis_service import LoudnessAnalysisService
     from core.repository.audio_dialog_repository import AudioDialogRepository
     import time
     
@@ -198,6 +199,7 @@ def example_8_single_file_complete_pipeline():
     transcription_service = TranscriptionService()
     criteria_service = CriteriaDetectionService()
     llm_service = LLMProcessingService()
+    loudness_service = LoudnessAnalysisService()
     repo = AudioDialogRepository()
     
     # Track statistics
@@ -206,6 +208,7 @@ def example_8_single_file_complete_pipeline():
         'skipped': 0,
         'criteria_success': 0,
         'llm_success': 0,
+        'loudness_success': 0,
         'errors': 0
     }
     
@@ -257,7 +260,7 @@ def example_8_single_file_complete_pipeline():
         logger.error(f"Criteria detection failed: {str(e)}")
     
     logger.info("="*60)
-    logger.info("STAGE 3/3: LLM ANALYSIS")
+    logger.info("STAGE 3/4: LLM ANALYSIS")
     logger.info("="*60)
     
     for idx, file_uuid in enumerate(processed_uuids, 1):
@@ -273,6 +276,21 @@ def example_8_single_file_complete_pipeline():
         except Exception as e:
             logger.warning(f"LLM processing error: {str(e)}")
     
+    logger.info("="*60)
+    logger.info("STAGE 4/4: LOUDNESS ANALYSIS")
+    logger.info("="*60)
+    logger.info(f"Running loudness analysis on {len(processed_uuids)} dialogs (parallel processing)")
+    
+    loudness_start = time.time()
+    try:
+        loudness_stats = loudness_service.process_dialogs(dialog_ids=processed_uuids)
+        loudness_elapsed = time.time() - loudness_start
+        logger.info(f"Loudness analysis completed in {loudness_elapsed:.2f}s")
+        logger.info(f"Processed: {loudness_stats.get('processed', 0)}, Failed: {loudness_stats.get('failed', 0)}")
+        stats['loudness_success'] = loudness_stats.get('processed', 0)
+    except Exception as e:
+        logger.error(f"Loudness analysis failed: {str(e)}")
+    
     elapsed = time.time() - start_time
     logger.info("="*60)
     logger.info("BATCH PROCESSING COMPLETE")
@@ -283,10 +301,11 @@ def example_8_single_file_complete_pipeline():
     logger.info(f"  Already processed:      {stats['skipped']}")
     logger.info(f"  Criteria detected:      {stats['criteria_success']} (batch)")
     logger.info(f"  LLM analysis done:      {stats['llm_success']}")
+    logger.info(f"  Loudness analyzed:      {stats['loudness_success']}")
     logger.info(f"  Errors:                 {stats['errors']}")
     logger.info(f"Total time: {elapsed:.2f} seconds, Average per file: {elapsed/len(files_to_process):.2f} seconds")
-    logger.info(f"Criteria detection processed only the {len(processed_uuids)} files you transcribed (batch mode)")
-    logger.info(f"All {len(processed_uuids)} files processed through all 3 stages")
+    logger.info(f"Batch stages (criteria + loudness) processed only the {len(processed_uuids)} files you transcribed")
+    logger.info(f"All {len(processed_uuids)} files processed through all 4 stages")
 
 
 def main():

@@ -64,6 +64,15 @@ llm_processing:
   strip_code_fences: true
   extract_first_json_blob: true
 
+# Loudness Analysis Settings
+loudness_analysis:
+  enabled: true
+  skip_existing: true
+  sample_rate: 16000
+  hop_length: 256
+  max_workers: 8  # Number of parallel workers (CPU cores)
+  batch_size: 1000
+
 # Logging Configuration
 logging:
   level: INFO               # DEBUG, INFO, WARNING, ERROR, CRITICAL
