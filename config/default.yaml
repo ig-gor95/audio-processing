@@ -1,0 +1,83 @@
+# Audio Processing Pipeline Configuration
+
+pipeline:
+  # Pipeline execution settings
+  max_workers: 5
+  max_files_per_run: 5000
+  
+  # Input/output paths (can be overridden via CLI)
+  default_input_folder: "~/Documents/Аудио Бринекс/2/"
+  temp_folder: "data/input/temp/"
+
+# Transcription and Diarization Settings
+transcription:
+  # Threading settings for audio processing
+  omp_num_threads: 1
+  mkl_num_threads: 1
+  
+  # Audio duration calculation
+  duration_lock_enabled: true
+  
+  # Reprocessing settings
+  reprocess_before_date: "2025-09-06"  # YYYY-MM-DD format
+  skip_processed: true  # Set to false to reprocess all files
+
+# Diarization Advanced Settings
+diarization:
+  # Overlapping windows configuration
+  window_size: 0.9          # Window size in seconds
+  hop_size: 0.25            # Hop size in seconds
+  min_segment_length: 0.8   # Minimum segment length in seconds
+  
+  # Merging labeled windows
+  max_gap: 0.15             # Maximum gap to merge segments (seconds)
+  merge_min_length: 0.8     # Minimum length after merging
+  
+  # Viterbi algorithm settings
+  switch_penalty: 0.18      # Penalty for switching speakers (0.15-0.25 recommended)
+  n_clusters: 2             # Number of speaker clusters
+
+# Criteria Detection Settings
+criteria_detection:
+  # Batch processing
+  batch_size: 1000          # Number of rows to process at once
+  
+  # Processing flags (can override criteria_detector_config.yaml)
+  enabled: true
+
+# LLM Processing Settings
+llm_processing:
+  # Processing control
+  skip_existing: true       # Skip dialogs that already have llm_data_short
+  
+  # Skip specific problematic dialog indices
+  skip_indices: [380, 1313, 1275]
+  
+  # Minimum dialog length to process
+  min_dialog_length: 5
+  
+  # Retry settings
+  max_retries: 3
+  retry_delay_seconds: 5
+  
+  # JSON parsing settings
+  strip_code_fences: true
+  extract_first_json_blob: true
+
+# Logging Configuration
+logging:
+  level: INFO               # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Per-stage logging
+  transcription_log_file: "logs/transcription.log"
+  criteria_detection_log_file: "logs/criteria_detection.log"
+  llm_processing_log_file: "logs/llm_processing.log"
+  pipeline_log_file: "logs/pipeline.log"
+
+# Error Handling
+error_handling:
+  continue_on_error: true   # Continue processing other files if one fails
+  save_error_log: true
+  error_log_path: "logs/errors.json"
+
