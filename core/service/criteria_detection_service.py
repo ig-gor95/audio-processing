@@ -40,14 +40,19 @@ class CriteriaDetectionService:
         self.analyzer = DialogueAnalyzerPandas()
         logger.info("DialogueAnalyzerPandas initialized successfully")
     
-    def process_dialogs(self) -> dict:
+    def process_dialogs(self, dialog_ids: Optional[list] = None) -> dict:
         """
-        Process all unprocessed dialogs for criteria detection.
+        Process dialogs for criteria detection.
+        
+        Args:
+            dialog_ids: Optional list of audio_dialog UUIDs to process.
+                       If None, processes all unprocessed dialogs.
         
         Returns:
             Dictionary with processing statistics:
             - rows_processed: Number of dialog rows processed
             - success: Whether processing completed successfully
+            - dialog_count: Number of dialogs processed
             
         Raises:
             Exception: If processing fails
@@ -57,21 +62,26 @@ class CriteriaDetectionService:
             return {
                 'rows_processed': 0,
                 'success': False,
-                'message': 'Disabled'
+                'message': 'Disabled',
+                'dialog_count': 0
             }
         
-        logger.info("Starting criteria detection for unprocessed dialogs")
+        if dialog_ids:
+            logger.info(f"Starting criteria detection for {len(dialog_ids)} specific dialogs")
+        else:
+            logger.info("Starting criteria detection for all unprocessed dialogs")
         
         try:
             # Run the analyzer
-            self.analyzer.analyze_dialogue()
+            self.analyzer.analyze_dialogue(dialog_ids)
             
             logger.info("Criteria detection completed successfully")
             
             return {
                 'rows_processed': None,  # Could track this if needed
                 'success': True,
-                'message': 'Completed'
+                'message': 'Completed',
+                'dialog_count': len(dialog_ids) if dialog_ids else None
             }
             
         except Exception as e:

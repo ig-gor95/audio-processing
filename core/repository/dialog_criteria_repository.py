@@ -29,14 +29,32 @@ class DialogCriteriaRepository:
             index=False
         )
 
-    def pd_get_all_unprocessed_rows(self) -> pd.DataFrame:
-        return pd.read_sql(f"""
-                    SELECT row.*
-                    from dialog_rows row
-                    left join dialog_criterias c on c.dialog_row_fk_id = row.id
-                    where row.row_text is not null and row.row_text != ' ' and row.row_text != ''
-                    and c.dialog_criteria_id is null
-                """, self.engine)
+    def pd_get_all_unprocessed_rows(self, dialog_ids: Optional[List[uuid.UUID]] = None) -> pd.DataFrame:
+        """
+        Get all unprocessed dialog rows, optionally filtered by dialog IDs.
+        
+        Args:
+            dialog_ids: Optional list of audio_dialog UUIDs to filter by
+            
+        Returns:
+            DataFrame with unprocessed dialog rows
+        """
+        query = """
+            SELECT row.*
+            FROM dialog_rows row
+            LEFT JOIN dialog_criterias c ON c.dialog_row_fk_id = row.id
+            WHERE row.row_text IS NOT NULL 
+              AND row.row_text != ' ' 
+              AND row.row_text != ''
+              AND c.dialog_criteria_id IS NULL
+        """
+        
+        if dialog_ids:
+            # Convert UUIDs to strings for SQL
+            uuid_strings = ','.join([f"'{str(uid)}'" for uid in dialog_ids])
+            query += f" AND row.audio_dialog_fk_id IN ({uuid_strings})"
+        
+        return pd.read_sql(query, self.engine)
 
     def save_bulk(self, dialog_rows: List[DialogCriteria]) -> None:
         with self._get_session() as session:
