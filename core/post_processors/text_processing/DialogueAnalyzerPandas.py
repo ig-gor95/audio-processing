@@ -162,13 +162,23 @@ class DialogueAnalyzerPandas:
 
         return result_df
 
-    def analyze_dialogue(self):
-        """Analyze dialogue text for various linguistic features."""
+    def analyze_dialogue(self, dialog_ids: Optional[list] = None):
+        """
+        Analyze dialogue text for various linguistic features.
+        
+        Args:
+            dialog_ids: Optional list of audio_dialog UUIDs to process. 
+                       If None, processes all unprocessed dialogs.
+        """
         dialog_criteria_repository = DialogCriteriaRepository()
 
-        rows_df = dialog_criteria_repository.pd_get_all_unprocessed_rows()
+        rows_df = dialog_criteria_repository.pd_get_all_unprocessed_rows(dialog_ids)
 
-        logger.info(f"Retrieved {len(rows_df)} dialogue rows")
+        if len(rows_df) == 0:
+            logger.info("No unprocessed rows found to analyze")
+            return
+
+        logger.info(f"Retrieved {len(rows_df)} dialogue rows for analysis")
         texts = rows_df['row_text']
         normalized_texts = texts.apply(normalize_text)
         order, processing, resume = self.order_pattern_detector(normalized_texts)

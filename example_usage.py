@@ -245,20 +245,21 @@ def example_8_single_file_complete_pipeline():
             stats['errors'] += 1
     
     # ============================================================
-    # STAGE 2: Criteria Detection (BATCH - runs on entire DB once)
+    # STAGE 2: Criteria Detection (BATCH on N files)
     # ============================================================
     print(f"\n{'='*60}")
-    print("📊 STAGE 2/3: CRITERIA DETECTION (BATCH)")
+    print(f"📊 STAGE 2/3: CRITERIA DETECTION (BATCH)")
     print(f"{'='*60}")
-    print("⏳ Running criteria detection on entire database...")
-    print("   (This is MUCH faster than per-file processing!)\n")
+    print(f"⏳ Running criteria detection on {len(processed_uuids)} processed files...")
+    print("   (Batch processing is MUCH faster than per-file!)\n")
     
     criteria_start = time.time()
     try:
-        criteria_service.process_dialogs()
+        criteria_service.process_dialogs(dialog_ids=processed_uuids)
         criteria_elapsed = time.time() - criteria_start
         print(f"✅ Criteria detection completed in {criteria_elapsed:.2f}s")
-        print(f"   Average per file: {criteria_elapsed/len(files_to_process):.2f}s\n")
+        print(f"   Dialogs processed: {len(processed_uuids)}")
+        print(f"   Average per file: {criteria_elapsed/len(processed_uuids):.2f}s\n")
         stats['criteria_success'] = len(processed_uuids)
     except Exception as e:
         print(f"❌ Criteria detection failed: {str(e)}\n")
@@ -297,8 +298,8 @@ def example_8_single_file_complete_pipeline():
     print(f"   Errors:                 {stats['errors']}")
     print(f"\n⏱️  Total time: {elapsed:.2f} seconds")
     print(f"   Average per file: {elapsed/len(files_to_process):.2f} seconds")
-    print(f"\n💡 Note: Criteria detection runs on entire DB (much faster than per-file!)")
-    print(f"\n✅ All {len(processed_uuids)} files processed through all stages!")
+    print(f"\n💡 Note: Criteria detection processes only the {len(processed_uuids)} files you transcribed!")
+    print(f"\n✅ All {len(processed_uuids)} files processed through all 3 stages!")
     print()
 
 
