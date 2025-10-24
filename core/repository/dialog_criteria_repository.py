@@ -1,3 +1,4 @@
+import uuid
 from typing import Optional, Dict, List
 from contextlib import contextmanager
 from uuid import UUID
@@ -50,7 +51,7 @@ class DialogCriteriaRepository:
         """
         
         if dialog_ids:
-            # Convert UUIDs to strings for SQL
+            logger.debug(f"Filtering by {len(dialog_ids)} specific dialog IDs")
             uuid_strings = ','.join([f"'{str(uid)}'" for uid in dialog_ids])
             query += f" AND row.audio_dialog_fk_id IN ({uuid_strings})"
         
