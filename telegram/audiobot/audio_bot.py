@@ -14,6 +14,8 @@ from pydub import AudioSegment
 from openai import OpenAI
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import ReplyKeyboardMarkup
+from telegram.ext import CallbackQueryHandler
 
 # ====== LOCALE ======
 try:
@@ -26,6 +28,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 PROXY = os.getenv("OPENAI_HTTP_PROXY", "socks5h://127.0.0.1:1080")  # напр. socks5h://127.0.0.1:1080
 
+DESCRIPTION_TEXT = (
+    "Привет! Это бот для обработки аудио диалогов.\n"
+    "Для работы нужно просто отправить диалог или записать голосовое сообщение."
+)
 # Whisper
 OPENAI_STT_MODEL = "whisper-1"
 OPENAI_STT_FALLBACK = "gpt-4o-mini-transcribe"
@@ -39,7 +45,7 @@ PYANNOTE_PIPE = os.getenv("PYANNOTE_PIPE", "pyannote/speaker-diarization-3.1")
 
 # I/O limits
 MAX_FILE_MB = 45
-MAX_AUDIO_DURATION = 600  # сек
+MAX_AUDIO_DURATION = 300  # сек
 
 # ====== TUNING ======
 START_SNAP = 0.15
@@ -69,6 +75,32 @@ def _pick_device() -> torch.device:
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == "Показать описание":
+        await update.message.reply_text(DESCRIPTION_TEXT)
+
+async def about(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(DESCRIPTION_TEXT)
+
+async def show_description_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    q = update.callback_query
+    await q.answer()
+    await q.message.reply_text(DESCRIPTION_TEXT)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = [["Показать описание"]]
+    reply_markup = ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,  # кнопка компактная
+        one_time_keyboard=False  # остаётся на экране
+    )
+
+    await update.message.reply_text(
+        "Привет! Это бот для обработки аудио диалогов.\n"
+        "Для работы просто отправьте аудио.",
+        reply_markup=reply_markup,
+    )
 
 # ====== utils ======
 def ensure_ffmpeg():
@@ -309,7 +341,6 @@ def analyze_dialogue_json(client: OpenAI, transcript: str) -> dict:
       sentiment: one_of["positive","neutral","negative"]
       summary: str
       action_items: list[str]
-      quality_flags: list[str]
     """
     try:
         resp = client.chat.completions.create(
@@ -323,12 +354,11 @@ def analyze_dialogue_json(client: OpenAI, transcript: str) -> dict:
                  "\"outcome\": one_of[\"next_step_set\",\"resolved\",\"unresolved\",\"followup_needed\"], "
                  "\"sentiment\": one_of[\"positive\",\"neutral\",\"negative\"], "
                  "\"summary\": string, "
-                 "\"action_items\": string[], "
-                 "\"quality_flags\": string[]"
+                 "\"action_items\": string[] "
                  "}"
                 },
                 {"role": "user", "content":
-                 "Проанализируй транскрипт с пометками спикеров:\n\n" + transcript}
+                 "Проанализируй транскрипт с пометками спикеров. Значения анализа заполняй по-русски:\n\n" + transcript}
             ],
             temperature=0.2,
         )
@@ -340,11 +370,6 @@ def analyze_dialogue_json(client: OpenAI, transcript: str) -> dict:
         return {}
 
 # ====== Telegram ======
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        f"🎙️ Пришлите аудио — расшифрую, разнесу по спикерам и дам краткий анализ.\nДо {MAX_FILE_MB} МБ или {MAX_AUDIO_DURATION//60} минут."
-    )
-
 async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.message
     log("Получен аудиофайл")
@@ -375,15 +400,15 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             http_client = httpx.Client(proxy=PROXY or None, timeout=60.0)
             client = OpenAI(api_key=OPENAI_API_KEY, http_client=http_client)
 
-            await status.edit_text("🔄 Транскрибирую (Whisper)...")
+            await status.edit_text("🔄 Перевожу диалог в текст...")
             _, asr_segments = await asyncio.get_event_loop().run_in_executor(
                 None, openai_transcribe, client, wav
             )
             if not asr_segments:
-                await status.edit_text("❌ Пустая транскрипция.")
+                await status.edit_text("❌ Ошибка перевода в текст.")
                 return
 
-            await status.edit_text("🔊 Диаризация (PyAnnote)...")
+            await status.edit_text("🔊 Определяю говорящих...")
             diar = await asyncio.get_event_loop().run_in_executor(None, diarize_with_pyannote, wav)
 
             if diar:
@@ -396,7 +421,7 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 for s in asr_segments:
                     s.speaker = None
                 transcript = render_transcript(asr_segments)
-                head = "🎙️ Расшифровка аудио\n⚠️ Диаризация недоступна\n"
+                head = "🎙️ Расшифровка аудио\n⚠️ Обнаружение говорящих недоступно\n"
                 body = head + transcript + render_stats(asr_segments)
 
             # Анализ диалога LLM (JSON)
@@ -423,7 +448,6 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     f"• Тональность: {analysis.get('sentiment','-')}\n"
                     f"• Итог: {analysis.get('summary','-')}\n"
                     f"• Действия: " + (", ".join(analysis.get('action_items', [])) or "-") + "\n"
-                    f"• Флаги качества: " + (", ".join(analysis.get('quality_flags', [])) or "-")
                 )
                 await msg.reply_text(analysis_text)
 
@@ -436,7 +460,7 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         except Exception as e:
             try:
-                await status.edit_text(f"❌ Ошибка: {e}")
+                await status.edit_text(f"❌ Ошибка анализа")
             except Exception:
                 pass
             log(f"Ошибка: {e}")
@@ -444,7 +468,10 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT, handle_text))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO | filters.Document.AUDIO, handle_audio))
+    app.add_handler(CommandHandler("about", about))
+    app.add_handler(CallbackQueryHandler(show_description_cb, pattern="^show_desc$"))
     log("Бот запущен")
     app.run_polling()
 
