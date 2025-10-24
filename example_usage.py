@@ -211,59 +211,77 @@ def example_8_single_file_complete_pipeline():
     processed_uuids = []
     start_time = time.time()
     
-    # Process each file
+    # ============================================================
+    # STAGE 1: Transcription & Diarization (per file)
+    # ============================================================
+    print(f"\n{'='*60}")
+    print("🎤 STAGE 1/3: TRANSCRIPTION & DIARIZATION")
+    print(f"{'='*60}\n")
+    
     for idx, audio_file in enumerate(files_to_process, 1):
-        print(f"\n{'='*60}")
-        print(f"📄 File {idx}/{len(files_to_process)}: {audio_file.name}")
-        print(f"{'='*60}\n")
+        print(f"⏳ [{idx}/{len(files_to_process)}] Processing: {audio_file.name}")
         
-        # Stage 1: Transcription & Diarization
-        print("⏳ Stage 1/3: Transcription & Diarization...")
         try:
             file_uuid = transcription_service.process_audio_file(audio_file)
             
             if file_uuid:
-                print(f"   ✅ Transcribed | UUID: {file_uuid}")
+                print(f"   ✅ Transcribed | UUID: {file_uuid}\n")
                 stats['transcribed'] += 1
+                processed_uuids.append(file_uuid)
             else:
                 # Try to get existing UUID
                 dialog = repo.find_by_filename(audio_file.name)
                 if dialog:
                     file_uuid = dialog.id
-                    print(f"   ⚠️  Already processed | UUID: {file_uuid}")
+                    print(f"   ⚠️  Already processed | UUID: {file_uuid}\n")
                     stats['skipped'] += 1
+                    processed_uuids.append(file_uuid)
                 else:
-                    print(f"   ❌ Could not process file")
+                    print(f"   ❌ Could not process file\n")
                     stats['errors'] += 1
-                    continue
-            
-            processed_uuids.append(file_uuid)
             
         except Exception as e:
-            print(f"   ❌ Error: {str(e)}")
+            print(f"   ❌ Error: {str(e)}\n")
             stats['errors'] += 1
-            continue
+    
+    # ============================================================
+    # STAGE 2: Criteria Detection (BATCH - runs on entire DB once)
+    # ============================================================
+    print(f"\n{'='*60}")
+    print("📊 STAGE 2/3: CRITERIA DETECTION (BATCH)")
+    print(f"{'='*60}")
+    print("⏳ Running criteria detection on entire database...")
+    print("   (This is MUCH faster than per-file processing!)\n")
+    
+    criteria_start = time.time()
+    try:
+        criteria_service.process_dialogs()
+        criteria_elapsed = time.time() - criteria_start
+        print(f"✅ Criteria detection completed in {criteria_elapsed:.2f}s")
+        print(f"   Average per file: {criteria_elapsed/len(files_to_process):.2f}s\n")
+        stats['criteria_success'] = len(processed_uuids)
+    except Exception as e:
+        print(f"❌ Criteria detection failed: {str(e)}\n")
+    
+    # ============================================================
+    # STAGE 3: LLM Processing (per file)
+    # ============================================================
+    print(f"\n{'='*60}")
+    print("🤖 STAGE 3/3: LLM ANALYSIS")
+    print(f"{'='*60}\n")
+    
+    for idx, file_uuid in enumerate(processed_uuids, 1):
+        print(f"⏳ [{idx}/{len(processed_uuids)}] LLM processing UUID: {file_uuid}")
         
-        # Stage 2: Criteria Detection (batch for all files so far)
-        print("⏳ Stage 2/3: Criteria Detection...")
-        try:
-            criteria_service.process_dialogs()
-            print(f"   ✅ Criteria detected")
-            stats['criteria_success'] += 1
-        except Exception as e:
-            print(f"   ⚠️  Warning: {str(e)}")
-        
-        # Stage 3: LLM Processing
-        print("⏳ Stage 3/3: LLM Analysis...")
         try:
             success = llm_service.process_dialog(file_uuid)
             if success:
-                print(f"   ✅ LLM analysis completed")
+                print(f"   ✅ LLM analysis completed\n")
                 stats['llm_success'] += 1
             else:
-                print(f"   ⚠️  LLM processing skipped")
+                print(f"   ⚠️  LLM processing skipped\n")
         except Exception as e:
-            print(f"   ⚠️  Warning: {str(e)}")
+            print(f"   ⚠️  Warning: {str(e)}\n")
     
     # Final Summary
     elapsed = time.time() - start_time
@@ -271,14 +289,15 @@ def example_8_single_file_complete_pipeline():
     print("✅ BATCH PROCESSING COMPLETE")
     print(f"{'='*60}")
     print(f"\n📊 Statistics:")
-    print(f"   Total files processed:  {len(files_to_process)}")
+    print(f"   Total files:            {len(files_to_process)}")
     print(f"   Newly transcribed:      {stats['transcribed']}")
     print(f"   Already processed:      {stats['skipped']}")
-    print(f"   Criteria detected:      {stats['criteria_success']}")
+    print(f"   Criteria detected:      {stats['criteria_success']} (batch)")
     print(f"   LLM analysis done:      {stats['llm_success']}")
     print(f"   Errors:                 {stats['errors']}")
     print(f"\n⏱️  Total time: {elapsed:.2f} seconds")
     print(f"   Average per file: {elapsed/len(files_to_process):.2f} seconds")
+    print(f"\n💡 Note: Criteria detection runs on entire DB (much faster than per-file!)")
     print(f"\n✅ All {len(processed_uuids)} files processed through all stages!")
     print()
 
