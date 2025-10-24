@@ -159,6 +159,91 @@ def example_7_batch_processing():
     print()
 
 
+def example_8_single_file_complete_pipeline():
+    """Example 8: Process ONE file through ALL stages."""
+    print("=== Example 8: Complete Pipeline for Single File ===\n")
+    
+    from core.service.transcription_service import TranscriptionService
+    from core.service.criteria_detection_service import CriteriaDetectionService
+    from core.service.llm_processing_service import LLMProcessingService
+    
+    # Specify a single audio file
+    audio_file = Path("~/Documents/Аудио Бринекс/2/").expanduser()
+    audio_files = list(audio_file.glob("*.mp3"))
+    
+    if not audio_files:
+        print("❌ No audio files found in the folder")
+        return
+    
+    # Take the first file
+    single_file = audio_files[0]
+    print(f"📁 Processing: {single_file.name}\n")
+    
+    # Stage 1: Transcription
+    print("Stage 1/3: Transcription & Diarization")
+    print("-" * 40)
+    transcription_service = TranscriptionService()
+    
+    file_uuid = transcription_service.process_audio_file(single_file)
+    
+    if file_uuid:
+        print(f"✅ Transcribed successfully")
+        print(f"   Dialog UUID: {file_uuid}\n")
+    else:
+        print("⚠️  File was skipped (already processed)\n")
+        # Try to get UUID from database
+        from core.repository.audio_dialog_repository import AudioDialogRepository
+        repo = AudioDialogRepository()
+        dialog = repo.find_by_filename(single_file.name)
+        if dialog:
+            file_uuid = dialog.id
+            print(f"   Found existing UUID: {file_uuid}\n")
+    
+    if not file_uuid:
+        print("❌ Could not process file")
+        return
+    
+    # Stage 2: Criteria Detection
+    print("Stage 2/3: Criteria Detection")
+    print("-" * 40)
+    criteria_service = CriteriaDetectionService()
+    
+    try:
+        criteria_stats = criteria_service.process_dialogs()
+        print(f"✅ Criteria detection completed")
+        print(f"   Success: {criteria_stats.get('success', False)}\n")
+    except Exception as e:
+        print(f"⚠️  Criteria detection: {str(e)}\n")
+    
+    # Stage 3: LLM Processing
+    print("Stage 3/3: LLM Analysis")
+    print("-" * 40)
+    llm_service = LLMProcessingService()
+    
+    try:
+        success = llm_service.process_dialog(file_uuid)
+        if success:
+            print(f"✅ LLM analysis completed")
+            print(f"   Dialog UUID: {file_uuid}\n")
+        else:
+            print(f"⚠️  LLM processing skipped or failed\n")
+    except Exception as e:
+        print(f"⚠️  LLM processing error: {str(e)}\n")
+    
+    # Summary
+    print("=" * 40)
+    print("✅ COMPLETE PIPELINE FINISHED")
+    print("=" * 40)
+    print(f"File: {single_file.name}")
+    print(f"UUID: {file_uuid}")
+    print("\nAll stages completed for this file!")
+    print("\nYou can now:")
+    print("  - View results in database")
+    print("  - Generate reports")
+    print("  - Process more files")
+    print()
+
+
 def main():
     """Run all examples."""
     print("Audio Processing Pipeline - Usage Examples")
@@ -172,8 +257,9 @@ def main():
     # example_3_process_specific_files()
     # example_4_use_services_directly()
     # example_5_custom_configuration()
-    example_6_check_status()
+    # example_6_check_status()
     # example_7_batch_processing()
+    example_8_single_file_complete_pipeline()  # NEW: Process one file through all stages
     
     print("=" * 60)
     print("Examples complete!")
