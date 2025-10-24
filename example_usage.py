@@ -192,7 +192,7 @@ def example_8_single_file_complete_pipeline():
         logger.error("No audio files found in the folder")
         return
     
-    files_to_process = audio_files[10:20]
+    files_to_process = audio_files[20:25]
     logger.info(f"Found {len(audio_files)} files, processing first {len(files_to_process)}")
     
     # Initialize services once
