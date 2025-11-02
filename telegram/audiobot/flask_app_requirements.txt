@@ -1,0 +1,24 @@
+# Flask app requirements for PythonAnywhere
+# Install with: pip3.10 install --user -r flask_app_requirements.txt
+
+# Core web framework
+Flask>=2.3.0
+
+# Telegram bot
+python-telegram-bot>=21.0
+
+# OpenAI API
+openai>=1.40.0
+
+# HTTP client
+httpx>=0.27.0
+
+# Audio processing
+pydub>=0.25.1
+
+# Optional but recommended for diarization
+# Note: These are large packages, install only if needed
+# pyannote.audio>=3.1.1
+# torch>=2.1.0
+# torchaudio>=2.1.0
+

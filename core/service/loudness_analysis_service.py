@@ -278,3 +278,4 @@ class LoudnessAnalysisService:
             'coverage_percent': (analyzed_rows / total_rows * 100) if total_rows > 0 else 0
         }
 
+
